@@ -954,50 +954,6 @@ const App: React.FC = () => {
       }
   };
   
-  const handleGeneratePayrolls = async () => {
-      const monthName = format(parseISO(dashboardMonth + '-01'), 'MMMM yyyy', { locale: es });
-      if(!window.confirm(`¿Generar gastos de nómina para todos los empleados fijos activos en ${monthName}? Esto creará una transacción de gasto para cada empleado.`)) return;
-      
-      const fixedEmployees = employees.filter(e => e.type === 'FIXED' && e.active);
-      const date = `${dashboardMonth}-01`; // 1st of month
-      
-      let createdCount = 0;
-      try {
-          for (const emp of fixedEmployees) {
-              const amount = emp.cost + (emp.extras || 0);
-              
-              // Simple duplicate check: avoid exact duplicates for same month/amount/name
-              const isDuplicate = transactions.some(t => 
-                  t.date.startsWith(dashboardMonth) && 
-                  t.category === Category.NOMINA_FIJA && 
-                  t.description.includes(emp.name)
-              );
-
-              if (!isDuplicate) {
-                  await saveTransaction({
-                      id: crypto.randomUUID(),
-                      date,
-                      amount,
-                      category: Category.NOMINA_FIJA,
-                      description: `Nómina ${monthName}: ${emp.name}`,
-                      type: TransactionType.EXPENSE
-                  });
-                  createdCount++;
-              }
-          }
-          // Force explicit refresh
-          setTransactions(await getTransactions()); 
-          
-          if(createdCount > 0) {
-              alert(`${createdCount} nóminas generadas correctamente. Ya aparecen en el dashboard.`);
-          } else {
-              alert('No se generaron nóminas nuevas (posiblemente ya existían para este mes).');
-          }
-      } catch(e) {
-          handleError(e);
-      }
-  }
-
   const handleAddSupplier = async () => {
       if (!newSupplierName.trim()) return;
       try {
@@ -1101,6 +1057,8 @@ const App: React.FC = () => {
       });
   };
 
+  // --- DASHBOARD LOGIC START ---
+
   const validTransactions = useMemo(() => {
       return transactions.filter(t => t.category !== Category.DESGLOSE_PAGO);
   }, [transactions]);
@@ -1110,10 +1068,35 @@ const App: React.FC = () => {
     return validTransactions.filter(t => isSameMonth(parseISO(t.date), selectedDate));
   }, [validTransactions, dashboardMonth]);
 
-  const dashboardSummary = useMemo(() => calculateSummary(dashboardData), [dashboardData]);
+  // 1. Calculate the theoretical fixed cost from ACTIVE employees configuration
+  // This value is used if no actual payroll transactions are found for the month.
+  const projectedFixedCost = useMemo(() => {
+      return employees
+          .filter(e => e.type === 'FIXED' && e.active)
+          .reduce((acc, curr) => acc + curr.cost + (curr.extras || 0), 0);
+  }, [employees]);
+
+  // 2. Check if the user has manually created payroll transactions (Category.NOMINA_FIJA) for this month
+  const hasActualFixedPayroll = useMemo(() => {
+      return dashboardData.some(t => t.category === Category.NOMINA_FIJA);
+  }, [dashboardData]);
+
+  // 3. Determine the "Effective" fixed cost to show in Dashboard
+  // If manual transactions exist, use 0 here (as they are already in dashboardData).
+  // If NOT, use the projected value.
+  const effectiveFixedCost = hasActualFixedPayroll ? 0 : projectedFixedCost;
+
+  // 4. Calculate Summary (Injecting the virtual fixed cost)
+  const dashboardSummary = useMemo(() => {
+      const base = calculateSummary(dashboardData);
+      return {
+          totalIncome: base.totalIncome,
+          totalExpense: base.totalExpense + effectiveFixedCost,
+          netBalance: base.netBalance - effectiveFixedCost
+      };
+  }, [dashboardData, effectiveFixedCost]);
 
   const breakdownData = useMemo(() => {
-    // Initialize counters
     const totals = {
         estructura: 0,
         proveedores: 0,
@@ -1124,9 +1107,10 @@ const App: React.FC = () => {
     };
     let totalExpensesInBreakdown = 0;
 
+    // Sum from actual transactions
     dashboardData.forEach(t => {
       if (t.type === TransactionType.EXPENSE) {
-        const amount = Number(t.amount) || 0; // Ensure numeric
+        const amount = Number(t.amount) || 0; 
         totalExpensesInBreakdown += amount;
 
         if (CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category)) {
@@ -1145,15 +1129,21 @@ const App: React.FC = () => {
       }
     });
 
+    // Add the Virtual Fixed Cost if applicable
+    if (effectiveFixedCost > 0) {
+        totals.personalFijo += effectiveFixedCost;
+        totalExpensesInBreakdown += effectiveFixedCost;
+    }
+
     const items = [
       { category: 'Estructura', amount: totals.estructura, colorClass: 'bg-emerald-500' },
       { category: 'Proveedores', amount: totals.proveedores, colorClass: 'bg-blue-500' },
       { category: 'Personal Fijo', amount: totals.personalFijo, colorClass: 'bg-purple-600' },
       { category: 'Personal Horas', amount: totals.personalHoras, colorClass: 'bg-purple-400' },
       { category: 'Gastos Caja', amount: totals.sesion, colorClass: 'bg-slate-500' },
-      { category: 'Otros', amount: totals.otros, colorClass: 'bg-gray-400' } // Catch-all category
+      { category: 'Otros', amount: totals.otros, colorClass: 'bg-gray-400' }
     ]
-    .filter(item => item.amount > 0 || item.category !== 'Otros') // Only show Other if it has value
+    .filter(item => item.amount > 0 || item.category !== 'Otros')
     .map(item => ({
         ...item,
         percentage: dashboardSummary.totalIncome > 0
@@ -1162,7 +1152,9 @@ const App: React.FC = () => {
     }));
 
     return { items, totalExpensesInBreakdown };
-  }, [dashboardData, dashboardSummary.totalIncome]);
+  }, [dashboardData, dashboardSummary.totalIncome, effectiveFixedCost]);
+
+  // --- DASHBOARD LOGIC END ---
 
   const annualData = useMemo(() => {
     return validTransactions.filter(t => t.date.startsWith(selectedYear));
@@ -1628,14 +1620,6 @@ const App: React.FC = () => {
                     <h2 className="text-2xl font-black text-slate-900">Gestión de Personal</h2>
                     <div className="flex items-center gap-3">
                         <button 
-                          onClick={handleGeneratePayrolls}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 text-sm"
-                          title="Genera gastos de nómina para el mes actual en base a los empleados fijos activos"
-                        >
-                          <Wallet size={18} />
-                          Generar Nóminas {format(parseISO(dashboardMonth + '-01'), 'MMM', { locale: es })}
-                        </button>
-                        <button 
                           onClick={exportToCSV}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 text-sm"
                         >
@@ -1665,7 +1649,7 @@ const App: React.FC = () => {
                             <h3 className="text-3xl font-black text-orange-500">
                                 {personalStats.monthlyFixedCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                             </h3>
-                            <p className="text-xs text-slate-400 mt-1">Genera nóminas para incluir en Dashboard</p>
+                            <p className="text-xs text-emerald-600 font-bold mt-1">Se incluye automáticamente en Dashboard</p>
                         </div>
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
