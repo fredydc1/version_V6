@@ -31,7 +31,8 @@ import {
   Wrench,
   AlertTriangle,
   Loader2,
-  Wallet
+  Wallet,
+  Power
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -915,7 +916,7 @@ const App: React.FC = () => {
           type: employeeFormTab,
           cost: Number(newEmployee.cost),
           extras: newEmployee.extras ? Number(newEmployee.extras) : undefined,
-          active: true
+          active: newEmployee.active ?? true // Default true
       };
       
       try {
@@ -933,6 +934,20 @@ const App: React.FC = () => {
       setEmployeeFormTab(emp.type);
       setIsEmployeeFormOpen(true);
       window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  };
+  
+  const handleToggleActive = async (emp: Employee) => {
+      try {
+          const updatedEmp = { ...emp, active: !emp.active };
+          const updatedList = await saveEmployee(updatedEmp);
+          setEmployees(updatedList);
+          // Update form state if we are currently editing this employee
+          if (newEmployee.id === emp.id) {
+              setNewEmployee(updatedEmp);
+          }
+      } catch (error) {
+          handleError(error);
+      }
   };
 
   const cancelEditingEmployee = () => {
@@ -1069,30 +1084,31 @@ const App: React.FC = () => {
   }, [validTransactions, dashboardMonth]);
 
   // 1. Calculate the theoretical fixed cost from ACTIVE employees configuration
-  // This value is used if no actual payroll transactions are found for the month.
+  // This value is used ALWAYS for "Personal Fijo" to ensure dashboard updates immediately on config change.
+  // We ignore manual NOMINA_FIJA transactions for calculation purposes to prevent double counting.
   const projectedFixedCost = useMemo(() => {
       return employees
           .filter(e => e.type === 'FIXED' && e.active)
           .reduce((acc, curr) => acc + curr.cost + (curr.extras || 0), 0);
   }, [employees]);
 
-  // 2. Check if the user has manually created payroll transactions (Category.NOMINA_FIJA) for this month
-  const hasActualFixedPayroll = useMemo(() => {
-      return dashboardData.some(t => t.category === Category.NOMINA_FIJA);
-  }, [dashboardData]);
+  // 2. Determine the "Effective" fixed cost to show in Dashboard
+  const effectiveFixedCost = projectedFixedCost;
 
-  // 3. Determine the "Effective" fixed cost to show in Dashboard
-  // If manual transactions exist, use 0 here (as they are already in dashboardData).
-  // If NOT, use the projected value.
-  const effectiveFixedCost = hasActualFixedPayroll ? 0 : projectedFixedCost;
-
-  // 4. Calculate Summary (Injecting the virtual fixed cost)
+  // 3. Calculate Summary (Injecting the virtual fixed cost)
   const dashboardSummary = useMemo(() => {
-      const base = calculateSummary(dashboardData);
+      // Calculate base from transactions, BUT EXCLUDE manual NOMINA_FIJA to prevent conflicts
+      // We keep SEGURIDAD_SOCIAL as it might be variable/manual, but NOMINA_FIJA is replaced by projection.
+      const manualExpenses = dashboardData.filter(t => t.type === TransactionType.EXPENSE && t.category !== Category.NOMINA_FIJA);
+      const manualIncome = dashboardData.filter(t => t.type === TransactionType.INCOME);
+      
+      const totalManualExpense = manualExpenses.reduce((acc, t) => acc + t.amount, 0);
+      const totalIncome = manualIncome.reduce((acc, t) => acc + t.amount, 0);
+
       return {
-          totalIncome: base.totalIncome,
-          totalExpense: base.totalExpense + effectiveFixedCost,
-          netBalance: base.netBalance - effectiveFixedCost
+          totalIncome,
+          totalExpense: totalManualExpense + effectiveFixedCost,
+          netBalance: totalIncome - (totalManualExpense + effectiveFixedCost)
       };
   }, [dashboardData, effectiveFixedCost]);
 
@@ -1110,7 +1126,12 @@ const App: React.FC = () => {
     // Sum from actual transactions
     dashboardData.forEach(t => {
       if (t.type === TransactionType.EXPENSE) {
+        // EXCLUDE NOMINA_FIJA from manual sum, as we inject the calculated total
+        if (t.category === Category.NOMINA_FIJA) return;
+
         const amount = Number(t.amount) || 0; 
+        
+        // Add to total (excluding fixed payroll which is added later)
         totalExpensesInBreakdown += amount;
 
         if (CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category)) {
@@ -1119,8 +1140,8 @@ const App: React.FC = () => {
             totals.proveedores += amount;
         } else if (t.category === Category.PERSONAL_HORAS) {
             totals.personalHoras += amount;
-        } else if (t.category === Category.NOMINA_FIJA || t.category === Category.SEGURIDAD_SOCIAL) {
-            totals.personalFijo += amount;
+        } else if (t.category === Category.SEGURIDAD_SOCIAL) {
+            totals.personalFijo += amount; // Still add Social Security if manual
         } else if (t.category === Category.GASTO_CAJA) {
             totals.sesion += amount;
         } else {
@@ -1129,7 +1150,8 @@ const App: React.FC = () => {
       }
     });
 
-    // Add the Virtual Fixed Cost if applicable
+    // Add the Virtual Fixed Cost (Configuration based)
+    // This ensures the dashboard always reflects the "Personal" tab settings
     if (effectiveFixedCost > 0) {
         totals.personalFijo += effectiveFixedCost;
         totalExpensesInBreakdown += effectiveFixedCost;
@@ -1256,7 +1278,7 @@ const App: React.FC = () => {
       
       // Calculate Fixed Costs (Sum of fixed salaries in config)
       const monthlyFixedCost = employees
-          .filter(e => e.type === 'FIXED')
+          .filter(e => e.type === 'FIXED' && e.active)
           .reduce((acc, curr) => acc + curr.cost + (curr.extras || 0), 0);
           
       // Calculate Variable Costs (Actual expense transactions this month for 'PERSONAL_HORAS')
@@ -1806,10 +1828,16 @@ const App: React.FC = () => {
                                             ? emp.cost + (emp.extras || 0) 
                                             : empMonthVariableCost;
 
+                                         const isActive = emp.active !== false; // Default true
+
                                          return (
-                                             <div key={emp.id} className="p-6 bg-slate-50 border border-slate-100 rounded-xl flex justify-between items-start group hover:border-indigo-200 transition-colors">
+                                             <div key={emp.id} className={`p-6 bg-slate-50 border rounded-xl flex justify-between items-start group transition-all ${isActive ? 'border-slate-100 hover:border-indigo-200' : 'border-slate-100 opacity-60 bg-slate-100'}`}>
                                                  <div>
-                                                     <h4 className="text-lg font-bold text-slate-900">{emp.name}</h4>
+                                                     <div className="flex items-center gap-2">
+                                                         <h4 className={`text-lg font-bold ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{emp.name}</h4>
+                                                         {!isActive && <span className="text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-bold">Inactivo</span>}
+                                                         {isActive && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></div>}
+                                                     </div>
                                                      <p className="text-sm text-slate-500 mb-2">
                                                          {emp.type === 'FIXED' 
                                                             ? `${emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €/mes ${emp.extras ? `+ ${emp.extras.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}€ Extras` : ''}` 
@@ -1830,13 +1858,20 @@ const App: React.FC = () => {
                                                                 </p>
                                                              </>
                                                          ) : (
-                                                             <p className="text-lg font-black text-orange-500">
+                                                             <p className={`text-lg font-black ${isActive ? 'text-orange-500' : 'text-slate-400'}`}>
                                                                  Coste Total: {displayCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                                                              </p>
                                                          )}
                                                      </div>
                                                  </div>
                                                  <div className="flex gap-2">
+                                                     <button 
+                                                        onClick={() => handleToggleActive(emp)}
+                                                        className={`p-2 rounded-lg border shadow-sm transition-colors ${isActive ? 'text-emerald-500 bg-white border-slate-200 hover:bg-emerald-50' : 'text-slate-400 bg-white border-slate-200 hover:bg-slate-50'}`}
+                                                        title={isActive ? "Desactivar empleado" : "Activar empleado"}
+                                                     >
+                                                         <Power size={16} />
+                                                     </button>
                                                      <button 
                                                         onClick={() => startEditingEmployee(emp)} 
                                                         className="p-2 text-slate-400 hover:text-indigo-600 bg-white rounded-lg border border-slate-200 shadow-sm"
