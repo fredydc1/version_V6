@@ -45,7 +45,7 @@ type ViewType = 'dashboard' | 'caja' | 'personal' | 'proveedores' | 'estructura'
 const STATIC_INCOME_SOURCES = [
   'Barra 1', 'Barra 2', 'Barra 3', 
   'Barra 4', 'Restaurante', 'VIP', 
-  'Tickets', 'Vapers', 'Shishas'
+  'Tickets', 'Puerta', 'Vapers', 'Shishas'
 ];
 
 interface DbConfigModalProps {
@@ -217,6 +217,9 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   const [staffHours, setStaffHours] = useState(''); // For hourly
   const [staffAmount, setStaffAmount] = useState(''); // For extra payments
 
+  // Filter only hourly employees for session reporting
+  const hourlyEmployees = useMemo(() => employees.filter(e => e.type === 'HOURLY'), [employees]);
+
   useEffect(() => {
     // Initialize income values from existing transactions
     const currentIncomes: Record<string, string> = {};
@@ -241,11 +244,11 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
       transfer: transferT ? transferT.amount.toString() : ''
     });
 
-    // Init employee selector
-    if (!selectedEmployee && employees.length > 0) {
-      setSelectedEmployee(employees[0].id);
+    // Init employee selector with only hourly employees
+    if (!selectedEmployee && hourlyEmployees.length > 0) {
+      setSelectedEmployee(hourlyEmployees[0].id);
     }
-  }, [transactions, employees, selectedEmployee]);
+  }, [transactions, employees, selectedEmployee, hourlyEmployees]);
 
   const sessionSummary = useMemo(() => {
     // We strictly use VENTA_DIARIA for the Total Income calculation to avoid double counting payments
@@ -354,11 +357,13 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     let amount = 0;
     let desc = '';
     
+    // Always treat as HOURLY in session editor as we filtered the list
     if (emp.type === 'HOURLY') {
         if (!staffHours) return;
         amount = parseFloat(staffHours) * emp.cost;
         desc = `${emp.name} (${staffHours}h)`;
     } else {
+         // Fallback just in case, though UI prevents it
          if (!staffAmount) amount = emp.cost;
          else amount = parseFloat(staffAmount);
          desc = `${emp.name} (Pago/Extra)`;
@@ -646,33 +651,20 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                                   onChange={(e) => setSelectedEmployee(e.target.value)} 
                                   className="w-full p-2 border border-slate-200 rounded-md bg-white"
                                >
-                                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                  {hourlyEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                                </select>
                            </div>
                            
-                           {employees.find(e => e.id === selectedEmployee)?.type === 'HOURLY' ? (
-                               <div className="w-full md:w-32">
-                                   <label className="block text-xs font-medium text-slate-600 mb-1">Horas</label>
-                                   <input 
-                                        type="number" 
-                                        value={staffHours} 
-                                        onChange={(e) => setStaffHours(e.target.value)} 
-                                        className="w-full p-2 border border-slate-200 rounded-md bg-white" 
-                                        placeholder="0" 
-                                   />
-                               </div>
-                            ) : (
-                               <div className="w-full md:w-32">
-                                   <label className="block text-xs font-medium text-slate-600 mb-1">Importe Extra</label>
-                                   <input 
-                                        type="number" 
-                                        value={staffAmount} 
-                                        onChange={(e) => setStaffAmount(e.target.value)} 
-                                        className="w-full p-2 border border-slate-200 rounded-md bg-white" 
-                                        placeholder="0.00" 
-                                   />
-                               </div>
-                            )}
+                           <div className="w-full md:w-32">
+                               <label className="block text-xs font-medium text-slate-600 mb-1">Horas</label>
+                               <input 
+                                    type="number" 
+                                    value={staffHours} 
+                                    onChange={(e) => setStaffHours(e.target.value)} 
+                                    className="w-full p-2 border border-slate-200 rounded-md bg-white" 
+                                    placeholder="0" 
+                               />
+                           </div>
 
                            <button 
                                 onClick={handleAddStaff}
@@ -1594,7 +1586,7 @@ const App: React.FC = () => {
 
                                      {employeeFormTab === 'FIXED' && (
                                          <div>
-                                             <label className="block text-sm font-medium text-slate-700 mb-2">Coste Seguridad Social (€)</label>
+                                             <label className="block text-sm font-medium text-slate-700 mb-2">Extras (€)</label>
                                              <input 
                                                 type="number" 
                                                 step="0.01"
@@ -1665,7 +1657,7 @@ const App: React.FC = () => {
                                                      <h4 className="text-lg font-bold text-slate-900">{emp.name}</h4>
                                                      <p className="text-sm text-slate-500 mb-2">
                                                          {emp.type === 'FIXED' 
-                                                            ? `${emp.cost} €/mes ${emp.extras ? `+ ${emp.extras}€ SS` : ''}` 
+                                                            ? `${emp.cost} €/mes ${emp.extras ? `+ ${emp.extras}€ Extras` : ''}` 
                                                             : `${emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € / hora`
                                                          }
                                                      </p>
