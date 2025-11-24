@@ -1005,22 +1005,50 @@ const App: React.FC = () => {
   const dashboardSummary = useMemo(() => calculateSummary(dashboardData), [dashboardData]);
 
   const breakdownData = useMemo(() => {
-    const categoryTotals: Record<string, number> = {};
+    let estructura = 0;
+    let proveedores = 0;
+    let personalFijo = 0;
+    let personalHoras = 0;
+    let sesion = 0;
     let totalExpensesInBreakdown = 0;
+
     dashboardData.forEach(t => {
       if (t.type === TransactionType.EXPENSE) {
-        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+        if (CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category)) {
+          estructura += t.amount;
+        } else if (CATEGORIES_BY_SECTION.PROVEEDORES.includes(t.category as Category)) {
+          proveedores += t.amount;
+        } else if (t.category === Category.PERSONAL_HORAS) {
+          personalHoras += t.amount;
+        } else if (t.category === Category.NOMINA_FIJA || t.category === Category.SEGURIDAD_SOCIAL) {
+          personalFijo += t.amount;
+        } else if (t.category === Category.GASTO_CAJA) {
+          sesion += t.amount;
+        }
         totalExpensesInBreakdown += t.amount;
       }
     });
-    const items = Object.entries(categoryTotals)
-      .map(([cat, amount]) => {
-        const percentage = dashboardSummary.totalIncome > 0 
-          ? (amount / dashboardSummary.totalIncome) * 100 
-          : 0;
-        return { category: cat, amount, percentage };
-      })
-      .sort((a, b) => b.amount - a.amount);
+
+    const rawItems = [
+      { name: 'Gastos de Estructura', amount: estructura, color: 'bg-emerald-500' },
+      { name: 'Proveedores', amount: proveedores, color: 'bg-blue-500' },
+      { name: 'Personal Fijo', amount: personalFijo, color: 'bg-purple-600' },
+      { name: 'Personal Horas', amount: personalHoras, color: 'bg-purple-400' },
+      { name: 'Sesión (Gastos Caja)', amount: sesion, color: 'bg-slate-500' },
+    ];
+
+    const items = rawItems
+      .filter(i => i.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .map(item => ({
+        category: item.name,
+        amount: item.amount,
+        percentage: dashboardSummary.totalIncome > 0
+          ? (item.amount / dashboardSummary.totalIncome) * 100
+          : 0,
+        colorClass: item.color
+      }));
+
     return { items, totalExpensesInBreakdown };
   }, [dashboardData, dashboardSummary.totalIncome]);
 
@@ -1029,14 +1057,6 @@ const App: React.FC = () => {
   }, [validTransactions, selectedYear]);
 
   const annualSummary = useMemo(() => calculateSummary(annualData), [annualData]);
-
-  const getCategoryColor = (cat: string) => {
-    if (CATEGORIES_BY_SECTION.PERSONAL.includes(cat as Category)) return 'bg-purple-500';
-    if (CATEGORIES_BY_SECTION.PROVEEDORES.includes(cat as Category)) return 'bg-blue-500';
-    if (CATEGORIES_BY_SECTION.ESTRUCTURA.includes(cat as Category)) return 'bg-emerald-500';
-    if (CATEGORIES_BY_SECTION.CAJA.includes(cat as Category)) return 'bg-slate-500';
-    return 'bg-orange-500';
-  };
 
   const getFilteredTransactions = () => {
     switch (activeView) {
@@ -1268,13 +1288,13 @@ const App: React.FC = () => {
                     breakdownData.items.map((item) => (
                         <div key={item.category} className="flex items-center justify-between group">
                             <div className="flex items-center gap-4">
-                                <div className={`w-3 h-3 rounded-full ${getCategoryColor(item.category)}`}></div>
+                                <div className={`w-3 h-3 rounded-full ${item.colorClass}`}></div>
                                 <span className="font-medium text-slate-700 text-sm md:text-base">{item.category}</span>
                             </div>
                             <div className="flex-1 mx-4 sm:mx-8 hidden sm:block">
                                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                                     <div 
-                                        className={`h-full rounded-full opacity-50 ${getCategoryColor(item.category)}`} 
+                                        className={`h-full rounded-full opacity-50 ${item.colorClass}`} 
                                         style={{ width: `${Math.min(item.percentage, 100)}%` }}
                                     ></div>
                                 </div>
