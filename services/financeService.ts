@@ -1,4 +1,4 @@
-import { neon } from '@netlify/neon';
+import { neon } from '@neondatabase/serverless';
 import { Transaction, TransactionType, Employee, Supplier, FixedExpenseItem, Category } from '../types';
 
 // --- DATABASE CONNECTION ---
@@ -32,6 +32,7 @@ const getSql = () => {
   if (connectionString) {
     try {
       // console.log("🔌 Conectando a Neon DB...");
+      // @neondatabase/serverless maneja automáticamente la conexión HTTP
       sqlInstance = neon(connectionString);
       return sqlInstance;
     } catch (error) {
@@ -154,6 +155,7 @@ export const getTransactions = async (): Promise<Transaction[]> => {
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM transactions ORDER BY date DESC`;
+    // @ts-ignore
     return rows.map(mapTransaction);
   } catch (error) {
     console.error("Error fetching transactions:", error);
@@ -220,6 +222,7 @@ export const getEmployees = async (): Promise<Employee[]> => {
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM employees`;
+    // @ts-ignore
     return rows.map(mapEmployee);
   } catch (error) {
     console.error("Error fetching employees:", error);
@@ -269,6 +272,7 @@ export const getSuppliers = async (): Promise<Supplier[]> => {
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM suppliers`;
+    // @ts-ignore
     return rows.map((r: any) => ({ id: r.id, name: r.name }));
   } catch (error) {
     console.error("Error fetching suppliers:", error);
@@ -313,6 +317,7 @@ export const getFixedExpenses = async (): Promise<FixedExpenseItem[]> => {
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM fixed_expenses`;
+    // @ts-ignore
     return rows.map(mapFixedExpense);
   } catch (error) {
     console.error("Error fetching fixed expenses:", error);
