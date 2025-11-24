@@ -27,13 +27,14 @@ import {
   ArrowLeft,
   LayoutGrid,
   Database,
-  Unplug
+  Unplug,
+  Wrench
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { Transaction, TransactionType, Category, Employee, Supplier, FixedExpenseItem } from './types';
-import { getTransactions, saveTransaction, deleteTransaction, calculateSummary, getEmployees, saveEmployee, deleteEmployee, getSuppliers, saveSupplier, deleteSupplier, getFixedExpenses, saveFixedExpense, deleteFixedExpense, setManualDatabaseUrl, disconnectManualDatabase, getStoredConnectionStatus } from './services/financeService';
+import { getTransactions, saveTransaction, deleteTransaction, calculateSummary, getEmployees, saveEmployee, deleteEmployee, getSuppliers, saveSupplier, deleteSupplier, getFixedExpenses, saveFixedExpense, deleteFixedExpense, setManualDatabaseUrl, disconnectManualDatabase, getStoredConnectionStatus, initializeSchema } from './services/financeService';
 import { SummaryCard } from './components/SummaryCard';
 import { CATEGORIES_BY_SECTION } from './constants';
 
@@ -54,6 +55,7 @@ interface DbConfigModalProps {
 const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState(getStoredConnectionStatus());
+  const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
@@ -67,6 +69,20 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
       if(window.confirm('¿Desconectar la base de datos actual?')) {
           disconnectManualDatabase();
           onClose();
+      }
+  };
+
+  const handleInitSchema = async () => {
+      setLoading(true);
+      try {
+          await initializeSchema();
+          alert('Tablas creadas correctamente. La base de datos está lista para usar.');
+          window.location.reload();
+      } catch (error) {
+          console.error(error);
+          alert('Error creando tablas. Revisa la conexión o la consola para más detalles.');
+      } finally {
+          setLoading(false);
       }
   };
 
@@ -100,6 +116,24 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
                     </div>
                 </div>
             </div>
+
+            {status.isConnected && (
+                <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+                     <h4 className="font-bold text-sm text-indigo-900 mb-2 flex items-center gap-2">
+                         <Wrench size={16}/> Mantenimiento
+                     </h4>
+                     <p className="text-xs text-slate-600 mb-3">
+                         Si la conexión es correcta pero tienes errores al guardar ("Error de operación"), es probable que las tablas no existan en la base de datos nueva.
+                     </p>
+                     <button 
+                        onClick={handleInitSchema}
+                        disabled={loading}
+                        className="w-full bg-white border border-indigo-200 text-indigo-700 font-bold py-2 rounded-lg hover:bg-indigo-100 transition-colors text-sm shadow-sm"
+                     >
+                        {loading ? 'Creando tablas...' : 'Inicializar Tablas / Reparar DB'}
+                     </button>
+                </div>
+            )}
 
             <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Conexión Manual (Connection String)</label>
@@ -735,7 +769,8 @@ const App: React.FC = () => {
       if (error?.message === "DB_NOT_CONNECTED") {
           setIsDbConfigOpen(true);
       } else {
-          alert("Error de operación. Verifica la consola.");
+          alert("Error de operación. Verifica la consola. (Si es tu primera vez, abre el menú de DB e Inicializa las tablas)");
+          console.error(error);
       }
   };
 

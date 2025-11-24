@@ -64,6 +64,66 @@ export const getStoredConnectionStatus = () => {
     };
 };
 
+// --- SCHEMA INITIALIZATION ---
+
+export const initializeSchema = async () => {
+  ensureDbConnection();
+  const sql = getSql();
+  try {
+    // Crear tabla Transacciones
+    // @ts-ignore
+    await sql`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        amount DECIMAL NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        type TEXT NOT NULL,
+        supplier TEXT
+      );
+    `;
+
+    // Crear tabla Empleados
+    // @ts-ignore
+    await sql`
+      CREATE TABLE IF NOT EXISTS employees (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        cost DECIMAL NOT NULL,
+        extras DECIMAL,
+        active BOOLEAN DEFAULT TRUE
+      );
+    `;
+
+    // Crear tabla Proveedores
+    // @ts-ignore
+    await sql`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+    `;
+
+    // Crear tabla Gastos Fijos (Estructura)
+    // @ts-ignore
+    await sql`
+      CREATE TABLE IF NOT EXISTS fixed_expenses (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        default_category TEXT NOT NULL,
+        default_amount DECIMAL
+      );
+    `;
+
+    return true;
+  } catch (error) {
+    console.error("Error inicializando esquema:", error);
+    throw error;
+  }
+};
+
 // --- UTILS ---
 const mapTransaction = (row: any): Transaction => ({
   ...row,
