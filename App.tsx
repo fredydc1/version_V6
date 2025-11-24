@@ -636,14 +636,22 @@ const App: React.FC = () => {
   }, []);
 
   const handleSaveTransaction = async (t: Transaction) => {
-    const updated = await saveTransaction(t);
-    setTransactions(updated);
+    try {
+      const updated = await saveTransaction(t);
+      setTransactions(updated);
+    } catch (error) {
+      alert("Error al guardar: No se pudo conectar con la base de datos.");
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('¿Estás seguro de eliminar esta transacción?')) {
-      const updated = await deleteTransaction(id);
-      setTransactions(updated);
+      try {
+        const updated = await deleteTransaction(id);
+        setTransactions(updated);
+      } catch (error) {
+        alert("Error al eliminar: No se pudo conectar con la base de datos.");
+      }
     }
   };
 
@@ -697,10 +705,15 @@ const App: React.FC = () => {
           extras: newEmployee.extras ? Number(newEmployee.extras) : undefined,
           active: true
       };
-      const updated = await saveEmployee(emp);
-      setEmployees(updated);
-      setIsEmployeeFormOpen(false); // Close accordion on save
-      setNewEmployee({ active: true }); 
+      
+      try {
+        const updated = await saveEmployee(emp);
+        setEmployees(updated);
+        setIsEmployeeFormOpen(false); // Close accordion on save
+        setNewEmployee({ active: true }); 
+      } catch (error) {
+        alert("Error al guardar empleado. Verifica tu conexión a la BD.");
+      }
   };
 
   const startEditingEmployee = (emp: Employee) => {
@@ -717,25 +730,37 @@ const App: React.FC = () => {
 
   const handleDeleteEmployee = async (id: string) => {
       if(window.confirm('¿Eliminar empleado? Esto no borrará sus registros históricos.')) {
-          const updated = await deleteEmployee(id);
-          setEmployees(updated);
-          if (newEmployee.id === id) {
-              setNewEmployee({ active: true });
+          try {
+            const updated = await deleteEmployee(id);
+            setEmployees(updated);
+            if (newEmployee.id === id) {
+                setNewEmployee({ active: true });
+            }
+          } catch (error) {
+            alert("Error al eliminar empleado.");
           }
       }
   };
 
   const handleAddSupplier = async () => {
       if (!newSupplierName.trim()) return;
-      const updated = await saveSupplier({ id: crypto.randomUUID(), name: newSupplierName });
-      setSuppliers(updated);
-      setNewSupplierName('');
+      try {
+        const updated = await saveSupplier({ id: crypto.randomUUID(), name: newSupplierName });
+        setSuppliers(updated);
+        setNewSupplierName('');
+      } catch (error) {
+        alert("Error al guardar proveedor.");
+      }
   };
 
   const handleDeleteSupplier = async (id: string) => {
       if(window.confirm('¿Eliminar proveedor de la lista?')) {
-          const updated = await deleteSupplier(id);
-          setSuppliers(updated);
+          try {
+            const updated = await deleteSupplier(id);
+            setSuppliers(updated);
+          } catch (error) {
+             alert("Error al eliminar proveedor.");
+          }
       }
   };
 
@@ -763,19 +788,27 @@ const App: React.FC = () => {
 
   const handleAddFixedExpense = async () => {
       if (!newFixedExpenseName.trim()) return;
-      const updated = await saveFixedExpense({ 
-          id: crypto.randomUUID(), 
-          name: newFixedExpenseName, 
-          defaultCategory: Category.ALQUILER 
-      });
-      setFixedExpenses(updated);
-      setNewFixedExpenseName('');
+      try {
+        const updated = await saveFixedExpense({ 
+            id: crypto.randomUUID(), 
+            name: newFixedExpenseName, 
+            defaultCategory: Category.ALQUILER 
+        });
+        setFixedExpenses(updated);
+        setNewFixedExpenseName('');
+      } catch (error) {
+         alert("Error al guardar concepto fijo.");
+      }
   };
 
   const handleDeleteFixedExpense = async (id: string) => {
       if(window.confirm('¿Eliminar concepto de la lista?')) {
-          const updated = await deleteFixedExpense(id);
-          setFixedExpenses(updated);
+          try {
+            const updated = await deleteFixedExpense(id);
+            setFixedExpenses(updated);
+          } catch (error) {
+            alert("Error al eliminar concepto.");
+          }
       }
   };
 
@@ -1239,11 +1272,15 @@ const App: React.FC = () => {
                                                 // Batch delete logic should be improved for real DB, but acceptable for now
                                                 // In a real app we'd call a dedicated endpoint
                                                 const toDelete = transactions.filter(t => t.date === d);
-                                                for(const t of toDelete) {
-                                                   await deleteTransaction(t.id);
+                                                try {
+                                                    for(const t of toDelete) {
+                                                       await deleteTransaction(t.id);
+                                                    }
+                                                    // Refresh local state manually after loop to avoid multiple re-renders or fetch again
+                                                    setTransactions(await getTransactions());
+                                                } catch (e) {
+                                                    alert("Error al eliminar sesión.");
                                                 }
-                                                // Refresh local state manually after loop to avoid multiple re-renders or fetch again
-                                                setTransactions(await getTransactions());
                                             }
                                         }}
                                     />

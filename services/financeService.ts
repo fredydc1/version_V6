@@ -2,24 +2,32 @@ import { neon } from '@netlify/neon';
 import { Transaction, TransactionType, Employee, Supplier, FixedExpenseItem, Category } from '../types';
 
 // --- DATABASE CONNECTION ---
-// Inicialización segura del cliente SQL para evitar "pantalla blanca" si falla la configuración
+
+// Helper para obtener variables de entorno tanto en Vite (navegador) como en Node (servidor)
+const getEnvVar = (key: string): string | undefined => {
+  // @ts-ignore - Vite uses import.meta.env
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+    // @ts-ignore
+    return import.meta.env[key];
+  }
+  if (typeof process !== 'undefined' && process.env && process.env[key]) { // @ts-ignore
+    return process.env[key];
+  }
+  return undefined;
+};
+
 const getSqlClient = () => {
   try {
-    // Verificamos si process y process.env existen (entorno seguro)
-    if (typeof process !== 'undefined' && process.env && process.env.NETLIFY_DATABASE_URL) {
-      return neon(process.env.NETLIFY_DATABASE_URL);
+    // 1. Intentamos obtener la URL explícita para frontend (VITE_DATABASE_URL)
+    //    IMPORTANTE: El usuario debe configurar esta variable en Netlify/Environment
+    const connectionString = getEnvVar('VITE_DATABASE_URL') || getEnvVar('NETLIFY_DATABASE_URL');
+    
+    if (connectionString) {
+      console.log("✅ Conectando a Neon DB...");
+      return neon(connectionString);
     }
     
-    // Si estamos en un entorno donde neon() puede autodetectar la variable (algunos entornos de Edge)
-    // intentamos inicializarlo sin argumentos, pero dentro del try/catch por si explota.
-    try {
-        // @ts-ignore - Intentamos inicialización automática si la librería lo soporta
-        return neon();
-    } catch (innerError) {
-        // Ignoramos este error y procedemos al fallback
-    }
-
-    console.warn("⚠️ NETLIFY_DATABASE_URL no detectada. La base de datos no está conectada.");
+    console.warn("⚠️ No se encontró VITE_DATABASE_URL ni NETLIFY_DATABASE_URL. La base de datos no funcionará.");
     return null;
   } catch (error) {
     console.error("❌ Error crítico inicializando cliente Neon:", error);
@@ -47,6 +55,11 @@ const mapFixedExpense = (row: any): FixedExpenseItem => ({
   defaultAmount: row.default_amount ? parseFloat(row.default_amount) : undefined
 });
 
+// Helper para validar conexión antes de operaciones de escritura
+const ensureDbConnection = () => {
+    if (!sql) throw new Error("Base de datos no conectada. Configura VITE_DATABASE_URL.");
+};
+
 // --- TRANSACTIONS ---
 
 export const getTransactions = async (): Promise<Transaction[]> => {
@@ -61,8 +74,9 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 };
 
 export const saveTransaction = async (transaction: Transaction): Promise<Transaction[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`
       INSERT INTO transactions (id, date, amount, description, category, type, supplier)
       VALUES (${transaction.id}, ${transaction.date}, ${transaction.amount}, ${transaction.description}, ${transaction.category}, ${transaction.type}, ${transaction.supplier || null})
@@ -82,8 +96,9 @@ export const saveTransaction = async (transaction: Transaction): Promise<Transac
 };
 
 export const deleteTransaction = async (id: string): Promise<Transaction[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`DELETE FROM transactions WHERE id = ${id}`;
     return getTransactions();
   } catch (error) {
@@ -122,8 +137,9 @@ export const getEmployees = async (): Promise<Employee[]> => {
 };
 
 export const saveEmployee = async (employee: Employee): Promise<Employee[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`
       INSERT INTO employees (id, name, type, cost, extras, active)
       VALUES (${employee.id}, ${employee.name}, ${employee.type}, ${employee.cost}, ${employee.extras || null}, ${employee.active})
@@ -142,8 +158,9 @@ export const saveEmployee = async (employee: Employee): Promise<Employee[]> => {
 };
 
 export const deleteEmployee = async (id: string): Promise<Employee[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`DELETE FROM employees WHERE id = ${id}`;
     return getEmployees();
   } catch (error) {
@@ -166,8 +183,9 @@ export const getSuppliers = async (): Promise<Supplier[]> => {
 };
 
 export const saveSupplier = async (supplier: Supplier): Promise<Supplier[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`
       INSERT INTO suppliers (id, name)
       VALUES (${supplier.id}, ${supplier.name})
@@ -181,8 +199,9 @@ export const saveSupplier = async (supplier: Supplier): Promise<Supplier[]> => {
 };
 
 export const deleteSupplier = async (id: string): Promise<Supplier[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`DELETE FROM suppliers WHERE id = ${id}`;
     return getSuppliers();
   } catch (error) {
@@ -205,8 +224,9 @@ export const getFixedExpenses = async (): Promise<FixedExpenseItem[]> => {
 };
 
 export const saveFixedExpense = async (item: FixedExpenseItem): Promise<FixedExpenseItem[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`
       INSERT INTO fixed_expenses (id, name, default_category, default_amount)
       VALUES (${item.id}, ${item.name}, ${item.defaultCategory}, ${item.defaultAmount || null})
@@ -223,8 +243,9 @@ export const saveFixedExpense = async (item: FixedExpenseItem): Promise<FixedExp
 };
 
 export const deleteFixedExpense = async (id: string): Promise<FixedExpenseItem[]> => {
-  if (!sql) return [];
+  ensureDbConnection();
   try {
+    // @ts-ignore
     await sql`DELETE FROM fixed_expenses WHERE id = ${id}`;
     return getFixedExpenses();
   } catch (error) {
