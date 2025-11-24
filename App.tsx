@@ -29,7 +29,8 @@ import {
   Database,
   Unplug,
   Wrench,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -191,6 +192,7 @@ interface SessionEditorProps {
 
 const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transactions, employees, onSaveTransaction, onDeleteTransaction, onDeleteSession }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Accordion states
   const [isIncomeOpen, setIsIncomeOpen] = useState(true);
@@ -241,7 +243,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   }, [transactions]);
 
   const sessionSummary = useMemo(() => {
-    // We strictly use VENTA_DIARIA for the Total Income calculation to avoid double counting payments
+    // We strictly use VENTA_DIARIA for the Total Income calculation
     const incomes = transactions
       .filter(t => t.type === TransactionType.INCOME && t.category === Category.VENTA_DIARIA)
       .reduce((acc, t) => acc + t.amount, 0);
@@ -262,29 +264,40 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   }, [transactions]);
 
   const handleSaveIncomes = async () => {
-      // Execute sequentially to prevent race conditions in state updates
-      for (const source of STATIC_INCOME_SOURCES) {
-          const valStr = incomeValues[source];
-          const val = parseFloat(valStr);
-          
-          // Find existing transaction to get ID or undefined
-          const existing = transactions.find(tr => tr.description === source && tr.type === TransactionType.INCOME && tr.category === Category.VENTA_DIARIA);
-          
-          if (val > 0) {
-              // Create or Update
-              await onSaveTransaction({
-                  id: existing ? existing.id : crypto.randomUUID(),
-                  date,
-                  amount: val,
-                  description: source,
-                  category: Category.VENTA_DIARIA,
-                  type: TransactionType.INCOME
-              });
-          } else if (existing && (val === 0 || isNaN(val))) {
-              await onDeleteTransaction(existing.id);
+      setIsSaving(true);
+      try {
+          // Execute sequentially to prevent race conditions in state updates
+          for (const source of STATIC_INCOME_SOURCES) {
+              const valStr = incomeValues[source];
+              const val = parseFloat(valStr);
+              
+              // Find existing transaction strictly by description AND category to avoid mixups with Session Title
+              const existing = transactions.find(tr => 
+                  tr.description === source && 
+                  tr.type === TransactionType.INCOME && 
+                  tr.category === Category.VENTA_DIARIA
+              );
+              
+              if (val > 0) {
+                  // Create or Update
+                  await onSaveTransaction({
+                      id: existing ? existing.id : crypto.randomUUID(),
+                      date,
+                      amount: val,
+                      description: source,
+                      category: Category.VENTA_DIARIA,
+                      type: TransactionType.INCOME
+                  });
+              } else if (existing && (val === 0 || isNaN(val))) {
+                  await onDeleteTransaction(existing.id);
+              }
           }
+      } catch (e) {
+          console.error(e);
+          alert('Error guardando ingresos. Inténtalo de nuevo.');
+      } finally {
+          setIsSaving(false);
       }
-      alert('Ingresos actualizados correctamente');
   };
 
   const handlePaymentChange = (field: 'cash' | 'card' | 'transfer', value: string) => {
@@ -306,29 +319,32 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   };
 
   const handleSavePayments = async () => {
-    const savePaymentType = async (desc: string, amountStr: string) => {
-      const val = parseFloat(amountStr);
-      const existing = transactions.find(tr => tr.description === desc && tr.category === Category.DESGLOSE_PAGO);
+    setIsSaving(true);
+    try {
+        const savePaymentType = async (desc: string, amountStr: string) => {
+          const val = parseFloat(amountStr);
+          const existing = transactions.find(tr => tr.description === desc && tr.category === Category.DESGLOSE_PAGO);
 
-      if (val > 0) {
-        await onSaveTransaction({
-          id: existing ? existing.id : crypto.randomUUID(),
-          date,
-          amount: val,
-          description: desc,
-          category: Category.DESGLOSE_PAGO, // Important: This category is excluded from dashboard totals
-          type: TransactionType.INCOME
-        });
-      } else if (existing) {
-        await onDeleteTransaction(existing.id);
-      }
-    };
+          if (val > 0) {
+            await onSaveTransaction({
+              id: existing ? existing.id : crypto.randomUUID(),
+              date,
+              amount: val,
+              description: desc,
+              category: Category.DESGLOSE_PAGO, // Important: This category is excluded from dashboard totals
+              type: TransactionType.INCOME
+            });
+          } else if (existing) {
+            await onDeleteTransaction(existing.id);
+          }
+        };
 
-    await savePaymentType('Cobro: Efectivo', paymentValues.cash);
-    await savePaymentType('Cobro: Tarjeta', paymentValues.card);
-    await savePaymentType('Cobro: Transferencia', paymentValues.transfer);
-    
-    alert('Desglose de cobro guardado.');
+        await savePaymentType('Cobro: Efectivo', paymentValues.cash);
+        await savePaymentType('Cobro: Tarjeta', paymentValues.card);
+        await savePaymentType('Cobro: Transferencia', paymentValues.transfer);
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleAddExpense = async () => {
@@ -458,9 +474,11 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                        <div className="flex justify-end">
                            <button 
                                 onClick={handleSaveIncomes}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-sm"
+                                disabled={isSaving}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                            >
-                               Guardar Ingresos
+                               {isSaving && <Loader2 className="animate-spin" size={16} />}
+                               {isSaving ? 'Guardando...' : 'Guardar Ingresos'}
                            </button>
                        </div>
                    </div>
@@ -551,9 +569,10 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                            </span>
                            <button 
                                 onClick={handleSavePayments}
-                                disabled={sessionSummary.totalIncome === 0}
-                                className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-6 rounded-lg shadow-sm disabled:opacity-50"
+                                disabled={sessionSummary.totalIncome === 0 || isSaving}
+                                className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-6 rounded-lg shadow-sm disabled:opacity-50 flex items-center gap-2"
                            >
+                               {isSaving && <Loader2 className="animate-spin" size={16} />}
                                Guardar Cobros
                            </button>
                        </div>
@@ -1298,9 +1317,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* ... Rest of the components remain same as they were handled by previous XML unless changes needed inside them ... */}
-        {/* Re-rendering other views to ensure file integrity although logic changed only in Dashboard and SessionEditor */}
-        
         {activeView === 'anual' && (
           <div className="space-y-8 animate-fade-in">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1436,8 +1452,14 @@ const App: React.FC = () => {
                             </div>
                         ) : (
                             cajaMetrics.sortedUniqueDates.map(date => {
-                                const sessionT = transactions.find(t => t.date === date && (CATEGORIES_BY_SECTION.CAJA.includes(t.category as Category) || t.description));
-                                const desc = sessionT ? sessionT.description : 'Sesión';
+                                // Find the "Title" transaction. It should be a VENTA_DIARIA but NOT one of the static income inputs.
+                                const sessionTitleTransaction = transactions.find(t => 
+                                    t.date === date && 
+                                    !STATIC_INCOME_SOURCES.includes(t.description) && // Important: Exclude standard inputs
+                                    t.category === Category.VENTA_DIARIA
+                                );
+                                
+                                const desc = sessionTitleTransaction ? sessionTitleTransaction.description : `Sesión ${format(parseISO(date), 'dd/MM')}`;
                                 
                                 return (
                                     <SessionEditor 
@@ -1721,6 +1743,7 @@ const App: React.FC = () => {
             </div>
         )}
 
+        {/* Proveedores, Estructura views remain unchanged in this block as requested changes were specific to Session naming and Incomes logic */}
         {activeView === 'proveedores' && (
           <div className="space-y-6 animate-fade-in">
             {/* Header always visible */}
