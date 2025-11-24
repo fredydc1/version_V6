@@ -382,7 +382,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
              <span className="text-xs uppercase font-bold text-slate-400 mb-1 block">Resultado Sesión</span>
              <div className="flex items-center gap-3">
                 <span className={`text-xl font-black ${sessionSummary.net >= 0 ? 'text-orange-500' : 'text-rose-500'}`}>
-                    {sessionSummary.net.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                    {sessionSummary.net.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                 </span>
                 {isOpen ? <ChevronUp className="text-slate-400"/> : <ChevronDown className="text-slate-400"/>}
              </div>
@@ -397,20 +397,20 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                <div className="space-y-2 text-sm">
                    <div className="flex justify-between">
                        <span className="text-slate-600 font-medium">Ingresos Totales:</span>
-                       <span className="font-bold text-emerald-500">{sessionSummary.totalIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                       <span className="font-bold text-emerald-500">{sessionSummary.totalIncome.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                    </div>
                    <div className="flex justify-between">
                        <span className="text-slate-600 font-medium">Gastos Directos:</span>
-                       <span className="font-bold text-rose-500">{sessionSummary.directExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                       <span className="font-bold text-rose-500">{sessionSummary.directExpenses.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                    </div>
                    <div className="flex justify-between">
                        <span className="text-slate-600 font-medium">Coste Personal (Horas):</span>
-                       <span className="font-bold text-rose-500">{sessionSummary.staffCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                       <span className="font-bold text-rose-500">{sessionSummary.staffCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                    </div>
                    <div className="flex justify-between pt-2 border-t border-slate-100 mt-2">
                        <span className="text-base font-bold text-slate-900">Resultado Neto Sesión:</span>
                        <span className={`text-base font-bold ${sessionSummary.net >= 0 ? 'text-orange-500' : 'text-rose-600'}`}>
-                           {sessionSummary.net.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                           {sessionSummary.net.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                        </span>
                    </div>
                </div>
@@ -483,8 +483,8 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                    <div className="p-4 bg-white border-t border-slate-100">
                        <div className="mb-4">
                            <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
-                               <span>Justificado: {currentPaymentTotal.toLocaleString('es-ES')} €</span>
-                               <span>Total Ingresos: {sessionSummary.totalIncome.toLocaleString('es-ES')} €</span>
+                               <span>Justificado: {currentPaymentTotal.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
+                               <span>Total Ingresos: {sessionSummary.totalIncome.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                            </div>
                            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                                <div 
@@ -541,7 +541,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                        <div className="flex justify-between items-center">
                            <span className="text-xs font-bold text-slate-500">
                                {paymentDiff > 0.01 
-                                ? `Faltan ${paymentDiff.toLocaleString('es-ES')} € por asignar` 
+                                ? `Faltan ${paymentDiff.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} € por asignar` 
                                 : 'Desglose completo'}
                            </span>
                            <button 
@@ -605,7 +605,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                                <div key={t.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100 text-sm">
                                    <span className="text-slate-700 font-medium">{t.description}</span>
                                    <div className="flex items-center gap-3">
-                                        <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                                        <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                                         <button onClick={() => onDeleteTransaction(t.id)} className="text-slate-300 hover:text-rose-500"><Trash2 size={14}/></button>
                                    </div>
                                </div>
@@ -640,14 +640,14 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                                    
                                    // Calculate hours from amount if exists, or empty
                                    // Logic: amount = hours * cost => hours = amount / cost
-                                   const currentHours = existingT ? (existingT.amount / emp.cost).toFixed(2).replace(/[.,]00$/, '') : '';
+                                   const currentHours = existingT ? (existingT.amount / emp.cost).toFixed(1).replace(/[.,]00$/, '') : '';
                                    const currentCost = existingT ? existingT.amount : 0;
 
                                    return (
                                        <div key={emp.id} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
                                            <div className="flex-1">
                                                <p className="font-bold text-slate-700 text-sm">{emp.name}</p>
-                                               <p className="text-xs text-slate-500">{emp.cost.toLocaleString('es-ES')} €/h</p>
+                                               <p className="text-xs text-slate-500">{emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €/h</p>
                                            </div>
                                            <div className="flex items-center gap-3">
                                                <div className="w-20">
@@ -661,7 +661,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                                                </div>
                                                <div className="w-24 text-right">
                                                    <span className={`font-black text-sm ${currentCost > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
-                                                       {currentCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                                       {currentCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                                                    </span>
                                                </div>
                                            </div>
@@ -672,7 +672,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                        )}
                        <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-sm">
                            <span className="font-bold text-slate-500">Total Personal Sesión</span>
-                           <span className="font-black text-rose-600">{sessionSummary.staffCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                           <span className="font-black text-rose-600">{sessionSummary.staffCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                        </div>
                    </div>
                )}
@@ -1009,11 +1009,11 @@ const App: React.FC = () => {
 
     // Fixed list of items, no filtering of 0 values, fixed order
     const items = [
-      { category: 'Gastos de Estructura', amount: estructura, colorClass: 'bg-emerald-500' },
+      { category: 'Estructura', amount: estructura, colorClass: 'bg-emerald-500' },
       { category: 'Proveedores', amount: proveedores, colorClass: 'bg-blue-500' },
       { category: 'Personal Fijo', amount: personalFijo, colorClass: 'bg-purple-600' },
       { category: 'Personal Horas', amount: personalHoras, colorClass: 'bg-purple-400' },
-      { category: 'Sesión (Gastos Caja)', amount: sesion, colorClass: 'bg-slate-500' },
+      { category: 'Gastos Caja', amount: sesion, colorClass: 'bg-slate-500' },
     ].map(item => ({
         ...item,
         percentage: dashboardSummary.totalIncome > 0
@@ -1272,7 +1272,7 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-4 text-sm md:text-base">
-                                <span className="font-bold text-slate-800">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                                <span className="font-bold text-slate-800">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                                 <span className="text-slate-500 w-16 text-right">({item.percentage.toFixed(1)}%)</span>
                             </div>
                         </div>
@@ -1281,7 +1281,7 @@ const App: React.FC = () => {
                </div>
                <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center">
                    <span className="text-lg font-bold text-slate-900">Coste Total del Desglose</span>
-                   <span className="text-xl font-black text-slate-900">{breakdownData.totalExpensesInBreakdown.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                   <span className="text-xl font-black text-slate-900">{breakdownData.totalExpensesInBreakdown.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                </div>
             </div>
           </div>
@@ -1351,9 +1351,9 @@ const App: React.FC = () => {
                     <div>
                         <p className="text-sm font-medium text-emerald-800 mb-1">Resultado Neto Acumulado (Sin costes fijos)</p>
                         <h3 className="text-3xl font-black text-emerald-600">
-                            {cajaMetrics.accumulatedNet.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                            {cajaMetrics.accumulatedNet.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                         </h3>
-                        <p className="text-xs text-emerald-600/80 font-bold mt-1">Neto con costes fijos: {cajaMetrics.totalNet.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</p>
+                        <p className="text-xs text-emerald-600/80 font-bold mt-1">Neto con costes fijos: {cajaMetrics.totalNet.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</p>
                     </div>
                 </div>
              </div>
@@ -1492,7 +1492,7 @@ const App: React.FC = () => {
                         <div>
                             <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo Mensual</p>
                             <h3 className="text-3xl font-black text-orange-500">
-                                {personalStats.monthlyFixedCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                {personalStats.monthlyFixedCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                             </h3>
                         </div>
                     </div>
@@ -1503,7 +1503,7 @@ const App: React.FC = () => {
                         <div>
                             <p className="text-sm font-medium text-slate-500 mb-1">Coste Variable (Horas)</p>
                             <h3 className="text-3xl font-black text-orange-500">
-                                {personalStats.variableCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                {personalStats.variableCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                             </h3>
                         </div>
                     </div>
@@ -1627,8 +1627,8 @@ const App: React.FC = () => {
                              ) : (
                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      {employees.filter(e => e.type === employeeViewTab).map(emp => {
-                                         // Calculate total cost for this employee in current month
-                                         const empMonthCost = dashboardData
+                                         // Calculate total cost for this employee in current month (Variable/Hourly part)
+                                         const empMonthVariableCost = dashboardData
                                              .filter(t => t.description.includes(emp.name) && t.category === Category.PERSONAL_HORAS)
                                              .reduce((acc, t) => acc + t.amount, 0);
 
@@ -1644,6 +1644,11 @@ const App: React.FC = () => {
                                                   // Fallback: amount / cost
                                                   return acc + (emp.cost > 0 ? t.amount / emp.cost : 0);
                                              }, 0);
+                                        
+                                         // Determine Display Cost based on Type
+                                         const displayCost = emp.type === 'FIXED' 
+                                            ? emp.cost + (emp.extras || 0) 
+                                            : empMonthVariableCost;
 
                                          return (
                                              <div key={emp.id} className="p-6 bg-slate-50 border border-slate-100 rounded-xl flex justify-between items-start group hover:border-indigo-200 transition-colors">
@@ -1651,13 +1656,13 @@ const App: React.FC = () => {
                                                      <h4 className="text-lg font-bold text-slate-900">{emp.name}</h4>
                                                      <p className="text-sm text-slate-500 mb-2">
                                                          {emp.type === 'FIXED' 
-                                                            ? `${emp.cost} €/mes ${emp.extras ? `+ ${emp.extras}€ Extras` : ''}` 
-                                                            : `${emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € / hora`
+                                                            ? `${emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €/mes ${emp.extras ? `+ ${emp.extras.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}€ Extras` : ''}` 
+                                                            : `${emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} € / hora`
                                                          }
                                                      </p>
                                                      
                                                      <div className="mt-4">
-                                                         {emp.type === 'HOURLY' && empMonthCost === 0 ? (
+                                                         {emp.type === 'HOURLY' && empMonthVariableCost === 0 ? (
                                                              <p className="text-xs text-slate-400 italic">No hay horas registradas para este empleado en la pestaña 'Caja' este mes.</p>
                                                          ) : emp.type === 'HOURLY' ? (
                                                              <>
@@ -1665,12 +1670,12 @@ const App: React.FC = () => {
                                                                    Horas Totales: {empMonthHours.toLocaleString('es-ES', { maximumFractionDigits: 1 })} h
                                                                 </p>
                                                                 <p className="text-lg font-black text-orange-500">
-                                                                   Coste Total: {empMonthCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                                                   Coste Total: {displayCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                                                                 </p>
                                                              </>
                                                          ) : (
                                                              <p className="text-lg font-black text-orange-500">
-                                                                 Coste Total: {empMonthCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                                                 Coste Total: {displayCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                                                              </p>
                                                          )}
                                                      </div>
@@ -1742,7 +1747,7 @@ const App: React.FC = () => {
                     <div>
                         <p className="text-sm font-medium text-slate-500 mb-1">Gasto Total en Proveedores</p>
                         <h3 className="text-3xl font-black text-rose-500">
-                             {viewSummary.totalExpense.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                             {viewSummary.totalExpense.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                         </h3>
                     </div>
                      <div className="p-3 bg-rose-50 rounded-full">
@@ -1769,7 +1774,7 @@ const App: React.FC = () => {
                                      <div className="flex-1">
                                          <div className="flex justify-between text-sm mb-1">
                                              <span className="font-bold text-slate-700">{item.name}</span>
-                                             <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                                             <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                                          </div>
                                          <div className="w-full bg-slate-100 rounded-full h-2">
                                              <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${(item.amount / viewSummary.totalExpense) * 100}%` }}></div>
@@ -1806,7 +1811,7 @@ const App: React.FC = () => {
                                           </p>
                                       </div>
                                       <div className="flex items-center gap-3">
-                                          <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                                          <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                                           <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-rose-500 p-1">
                                               <Trash2 size={16} />
                                           </button>
@@ -2023,7 +2028,7 @@ const App: React.FC = () => {
                             <div>
                                 <p className="text-sm font-medium text-slate-500 mb-1">Total Estructura</p>
                                 <h3 className="text-3xl font-black text-rose-500">
-                                    {viewSummary.totalExpense.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                    {viewSummary.totalExpense.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                                 </h3>
                             </div>
                             <div className="p-3 bg-rose-50 rounded-full">
@@ -2051,7 +2056,7 @@ const App: React.FC = () => {
                                             <div className="flex-1">
                                                 <div className="flex justify-between text-sm mb-1">
                                                     <span className="font-bold text-slate-700">{item.name}</span>
-                                                    <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                                                    <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                                                 </div>
                                                 <div className="w-full bg-slate-100 rounded-full h-2">
                                                     <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(item.amount / viewSummary.totalExpense) * 100}%` }}></div>
@@ -2088,7 +2093,7 @@ const App: React.FC = () => {
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                                            <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                                             <button 
                                                 onClick={() => startEditingStructure(t)} 
                                                 className="text-slate-300 hover:text-indigo-600 p-1 border border-transparent hover:border-slate-200 rounded"

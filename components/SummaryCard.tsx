@@ -43,7 +43,7 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ title, amount, icon: I
         <div>
           <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
           <h3 className={`text-3xl font-bold ${styles.amountColor}`}>
-            {amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+            {amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
           </h3>
         </div>
         <div className={`p-3 rounded-full ${styles.bgIcon} flex items-center justify-center`}>
