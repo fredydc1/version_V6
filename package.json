@@ -15,7 +15,8 @@
     "date-fns": "^4.1.0",
     "@google/genai": "^1.30.0",
     "react-dom": "^19.2.0",
-    "recharts": "^3.5.0"
+    "recharts": "^3.5.0",
+    "@netlify/neon": "^0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
