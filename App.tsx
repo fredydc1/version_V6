@@ -30,7 +30,8 @@ import {
   Unplug,
   Wrench,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Wallet
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -213,6 +214,9 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
 
+  // Staff Hours State (Batch)
+  const [hourlyValues, setHourlyValues] = useState<Record<string, string>>({});
+
   // Filter specific transactions for this session
   // Logic: Matches Explicit SessionID (stored in supplier col) OR Matches Date (Legacy fallback)
   const sessionTransactions = useMemo(() => {
@@ -244,7 +248,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
         if (t) {
             currentIncomes[source] = t.amount.toString();
         } else {
-            currentIncomes[source] = '0';
+            currentIncomes[source] = '';
         }
     });
     setIncomeValues(currentIncomes);
@@ -259,7 +263,26 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
       card: cardT ? cardT.amount.toString() : '',
       transfer: transferT ? transferT.amount.toString() : ''
     });
-  }, [sessionTransactions]);
+
+    // Initialize Hourly Staff values
+    const staffVals: Record<string, string> = {};
+    hourlyEmployees.forEach(emp => {
+        const existingT = sessionTransactions.find(t => 
+           t.category === Category.PERSONAL_HORAS && 
+           t.description.startsWith(emp.name)
+        );
+        if (existingT) {
+             // Derive hours from amount: hours = amount / cost
+             // We format to 1 decimal for editing
+             const h = (existingT.amount / emp.cost).toFixed(1).replace(/[.,]00$/, '');
+             staffVals[emp.id] = h;
+        } else {
+             staffVals[emp.id] = '';
+        }
+    });
+    setHourlyValues(staffVals);
+
+  }, [sessionTransactions, hourlyEmployees]);
 
   const sessionSummary = useMemo(() => {
     // We strictly use VENTA_DIARIA for the Total Income calculation
@@ -383,29 +406,39 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
     setExpenseDesc('');
   };
 
-  // Helper to handle updates for a specific hourly employee from the list
-  const handleUpdateHourlyStaff = async (emp: Employee, hoursStr: string) => {
-      const hours = parseFloat(hoursStr);
-      // Find existing transaction based on category and description match
-      // We assume description format "Name (Xh)" for persistence
-      const existing = sessionTransactions.find(t => 
-          t.category === Category.PERSONAL_HORAS && 
-          t.description.startsWith(emp.name)
-      );
+  const handleSaveHourlyStaff = async () => {
+      setIsSaving(true);
+      try {
+          for(const emp of hourlyEmployees) {
+              const hoursStr = hourlyValues[emp.id];
+              const hours = parseFloat(hoursStr);
+              // Find existing transaction based on category and description match
+              // We assume description format "Name (Xh)" for persistence
+              const existing = sessionTransactions.find(t => 
+                  t.category === Category.PERSONAL_HORAS && 
+                  t.description.startsWith(emp.name)
+              );
 
-      if (hours > 0) {
-          const amount = hours * emp.cost;
-          await onSaveTransaction({
-              id: existing ? existing.id : crypto.randomUUID(),
-              date: session.date,
-              amount: amount,
-              description: `${emp.name} (${hours}h)`,
-              category: Category.PERSONAL_HORAS,
-              type: TransactionType.EXPENSE,
-              supplier: session.id // Link to this session
-          });
-      } else if (existing) {
-          await onDeleteTransaction(existing.id);
+              if (hours > 0) {
+                  const amount = hours * emp.cost;
+                  await onSaveTransaction({
+                      id: existing ? existing.id : crypto.randomUUID(),
+                      date: session.date,
+                      amount: amount,
+                      description: `${emp.name} (${hours}h)`,
+                      category: Category.PERSONAL_HORAS,
+                      type: TransactionType.EXPENSE,
+                      supplier: session.id // Link to this session
+                  });
+              } else if (existing && (hours === 0 || isNaN(hours))) {
+                  await onDeleteTransaction(existing.id);
+              }
+          }
+      } catch (e) {
+          console.error(e);
+          alert('Error guardando horas. Inténtalo de nuevo.');
+      } finally {
+          setIsSaving(false);
       }
   };
 
@@ -486,9 +519,9 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
                                    <label className="block text-xs font-medium text-slate-600 mb-1">{source} (€)</label>
                                    <input 
                                         type="number"
-                                        value={incomeValues[source]}
+                                        value={incomeValues[source] || ''}
                                         onChange={(e) => setIncomeValues({...incomeValues, [source]: e.target.value})}
-                                        className="w-full p-2 border border-slate-200 rounded-md text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                                        className="w-full p-2 border border-slate-200 rounded-md text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 outline-none bg-white placeholder:text-slate-300"
                                         placeholder="0"
                                    />
                                </div>
@@ -677,48 +710,54 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
                        {hourlyEmployees.length === 0 ? (
                            <p className="text-slate-400 text-center py-4 italic text-sm">No hay personal por horas registrado.</p>
                        ) : (
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                               {hourlyEmployees.map(emp => {
-                                   // Check if there is already a transaction for this employee in this session
-                                   const existingT = sessionTransactions.find(t => 
-                                       t.category === Category.PERSONAL_HORAS && 
-                                       t.description.startsWith(emp.name)
-                                   );
-                                   
-                                   // Calculate hours from amount if exists, or empty
-                                   // Logic: amount = hours * cost => hours = amount / cost
-                                   const currentHours = existingT ? (existingT.amount / emp.cost).toFixed(1).replace(/[.,]00$/, '') : '';
-                                   const currentCost = existingT ? existingT.amount : 0;
+                           <>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 {hourlyEmployees.map(emp => {
+                                     // Derive current hourly rate and cost from state or calculate if needed
+                                     const hoursStr = hourlyValues[emp.id];
+                                     const hours = parseFloat(hoursStr) || 0;
+                                     const currentCost = hours * emp.cost;
 
-                                   return (
-                                       <div key={emp.id} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
-                                           <div className="flex-1">
-                                               <p className="font-bold text-slate-700 text-sm">{emp.name}</p>
-                                               <p className="text-xs text-slate-500">{emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €/h</p>
-                                           </div>
-                                           <div className="flex items-center gap-3">
-                                               <div className="w-20">
-                                                   <input 
-                                                       type="number" 
-                                                       placeholder="0 h"
-                                                       value={currentHours}
-                                                       onChange={(e) => handleUpdateHourlyStaff(emp, e.target.value)}
-                                                       className="w-full p-2 text-right border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold"
-                                                   />
-                                               </div>
-                                               <div className="w-24 text-right">
-                                                   <span className={`font-black text-sm ${currentCost > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
-                                                       {currentCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
-                                                   </span>
-                                               </div>
-                                           </div>
-                                       </div>
-                                   );
-                               })}
-                           </div>
+                                     return (
+                                         <div key={emp.id} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
+                                             <div className="flex-1">
+                                                 <p className="font-bold text-slate-700 text-sm">{emp.name}</p>
+                                                 <p className="text-xs text-slate-500">{emp.cost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €/h</p>
+                                             </div>
+                                             <div className="flex items-center gap-3">
+                                                 <div className="w-20">
+                                                     <input 
+                                                         type="number" 
+                                                         placeholder="0 h"
+                                                         value={hourlyValues[emp.id]}
+                                                         onChange={(e) => setHourlyValues({...hourlyValues, [emp.id]: e.target.value})}
+                                                         className="w-full p-2 text-right border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold placeholder:text-slate-300"
+                                                     />
+                                                 </div>
+                                                 <div className="w-24 text-right">
+                                                     <span className={`font-black text-sm ${currentCost > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                                                         {currentCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
+                                                     </span>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     );
+                                 })}
+                             </div>
+                             <div className="flex justify-end mt-4">
+                                <button 
+                                      onClick={handleSaveHourlyStaff}
+                                      disabled={isSaving}
+                                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isSaving && <Loader2 className="animate-spin" size={16} />}
+                                    {isSaving ? 'Guardando...' : 'Guardar Horas'}
+                                </button>
+                             </div>
+                           </>
                        )}
                        <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-sm">
-                           <span className="font-bold text-slate-500">Total Personal Sesión</span>
+                           <span className="font-bold text-slate-500">Total Personal Sesión (Guardado)</span>
                            <span className="font-black text-rose-600">{sessionSummary.staffCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
                        </div>
                    </div>
@@ -914,6 +953,42 @@ const App: React.FC = () => {
           }
       }
   };
+  
+  const handleGeneratePayrolls = async () => {
+      const monthName = format(parseISO(dashboardMonth + '-01'), 'MMMM yyyy', { locale: es });
+      if(!window.confirm(`¿Generar gastos de nómina para todos los empleados fijos activos en ${monthName}? Esto creará una transacción de gasto para cada empleado.`)) return;
+      
+      const fixedEmployees = employees.filter(e => e.type === 'FIXED' && e.active);
+      const date = `${dashboardMonth}-01`; // 1st of month
+      
+      try {
+          for (const emp of fixedEmployees) {
+              const amount = emp.cost + (emp.extras || 0);
+              
+              // Simple duplicate check: avoid exact duplicates for same month/amount/name
+              const isDuplicate = transactions.some(t => 
+                  t.date.startsWith(dashboardMonth) && 
+                  t.category === Category.NOMINA_FIJA && 
+                  t.description.includes(emp.name)
+              );
+
+              if (!isDuplicate) {
+                  await saveTransaction({
+                      id: crypto.randomUUID(),
+                      date,
+                      amount,
+                      category: Category.NOMINA_FIJA,
+                      description: `Nómina ${monthName}: ${emp.name}`,
+                      type: TransactionType.EXPENSE
+                  });
+              }
+          }
+          setTransactions(await getTransactions()); // refresh
+          alert('Nóminas generadas correctamente. Ya aparecen en el dashboard.');
+      } catch(e) {
+          handleError(e);
+      }
+  }
 
   const handleAddSupplier = async () => {
       if (!newSupplierName.trim()) return;
@@ -1055,7 +1130,6 @@ const App: React.FC = () => {
     });
 
     // Fixed list of items, no filtering of 0 values, fixed order
-    // Renamed 'Gastos de Estructura' to 'Estructura'
     const items = [
       { category: 'Estructura', amount: estructura, colorClass: 'bg-emerald-500' },
       { category: 'Proveedores', amount: proveedores, colorClass: 'bg-blue-500' },
@@ -1530,18 +1604,27 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* ... Rest of existing components/views (Personal, Proveedores, Estructura) ... */}
         {activeView === 'personal' && (
             <div className="space-y-6 animate-fade-in">
-                 <div className="flex justify-between items-center">
+                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <h2 className="text-2xl font-black text-slate-900">Gestión de Personal</h2>
-                    <button 
-                      onClick={exportToCSV}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2"
-                    >
-                      <Download size={18} />
-                      Exportar a CSV
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button 
+                          onClick={handleGeneratePayrolls}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 text-sm"
+                          title="Genera gastos de nómina para el mes actual en base a los empleados fijos activos"
+                        >
+                          <Wallet size={18} />
+                          Generar Nóminas {format(parseISO(dashboardMonth + '-01'), 'MMM', { locale: es })}
+                        </button>
+                        <button 
+                          onClick={exportToCSV}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2 text-sm"
+                        >
+                          <Download size={18} />
+                          Exportar
+                        </button>
+                    </div>
                  </div>
 
                  {/* KPI CARDS for Personal */}
@@ -1560,10 +1643,11 @@ const App: React.FC = () => {
                             <BadgeDollarSign className="text-emerald-600" size={32} />
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo Mensual</p>
+                            <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo Configurado</p>
                             <h3 className="text-3xl font-black text-orange-500">
                                 {personalStats.monthlyFixedCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                             </h3>
+                            <p className="text-xs text-slate-400 mt-1">Genera nóminas para incluir en Dashboard</p>
                         </div>
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
