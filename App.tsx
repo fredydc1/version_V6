@@ -181,16 +181,15 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
 };
 
 interface SessionEditorProps {
-  date: string;
-  description: string;
-  transactions: Transaction[];
+  session: Transaction; // The Header Transaction
+  allTransactions: Transaction[];
   employees: Employee[];
   onSaveTransaction: (t: Transaction) => Promise<void>;
   onDeleteTransaction: (id: string) => Promise<void>;
-  onDeleteSession: (date: string) => void;
+  onDeleteSession: (session: Transaction) => void;
 }
 
-const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transactions, employees, onSaveTransaction, onDeleteTransaction, onDeleteSession }) => {
+const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions, employees, onSaveTransaction, onDeleteTransaction, onDeleteSession }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -214,6 +213,26 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
 
+  // Filter specific transactions for this session
+  // Logic: Matches Explicit SessionID (stored in supplier col) OR Matches Date (Legacy fallback)
+  const sessionTransactions = useMemo(() => {
+    return allTransactions.filter(t => {
+        // Exclude the header itself from the content list
+        if (t.id === session.id) return false;
+
+        // 1. New System: Explicit Link via 'supplier' field acting as sessionId
+        if (t.supplier === session.id) return true;
+
+        // 2. Legacy System: Match by Date, no explicit link, and ensure it's not another Session Header
+        // We only fall back to date if the transaction has NO explicit link.
+        const isHeader = t.category === Category.VENTA_DIARIA && !STATIC_INCOME_SOURCES.includes(t.description);
+        if (t.date === session.date && !t.supplier && !isHeader) {
+            return true;
+        }
+        return false;
+    });
+  }, [allTransactions, session]);
+
   // Filter only hourly employees for session reporting
   const hourlyEmployees = useMemo(() => employees.filter(e => e.type === 'HOURLY'), [employees]);
 
@@ -221,7 +240,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     // Initialize income values from existing transactions
     const currentIncomes: Record<string, string> = {};
     STATIC_INCOME_SOURCES.forEach(source => {
-        const t = transactions.find(tr => tr.description === source && tr.type === TransactionType.INCOME && tr.category === Category.VENTA_DIARIA);
+        const t = sessionTransactions.find(tr => tr.description === source && tr.type === TransactionType.INCOME && tr.category === Category.VENTA_DIARIA);
         if (t) {
             currentIncomes[source] = t.amount.toString();
         } else {
@@ -231,29 +250,29 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     setIncomeValues(currentIncomes);
 
     // Initialize Payment Breakdown values
-    const cashT = transactions.find(t => t.category === Category.DESGLOSE_PAGO && t.description === 'Cobro: Efectivo');
-    const cardT = transactions.find(t => t.category === Category.DESGLOSE_PAGO && t.description === 'Cobro: Tarjeta');
-    const transferT = transactions.find(t => t.category === Category.DESGLOSE_PAGO && t.description === 'Cobro: Transferencia');
+    const cashT = sessionTransactions.find(t => t.category === Category.DESGLOSE_PAGO && t.description === 'Cobro: Efectivo');
+    const cardT = sessionTransactions.find(t => t.category === Category.DESGLOSE_PAGO && t.description === 'Cobro: Tarjeta');
+    const transferT = sessionTransactions.find(t => t.category === Category.DESGLOSE_PAGO && t.description === 'Cobro: Transferencia');
 
     setPaymentValues({
       cash: cashT ? cashT.amount.toString() : '',
       card: cardT ? cardT.amount.toString() : '',
       transfer: transferT ? transferT.amount.toString() : ''
     });
-  }, [transactions]);
+  }, [sessionTransactions]);
 
   const sessionSummary = useMemo(() => {
     // We strictly use VENTA_DIARIA for the Total Income calculation
-    const incomes = transactions
+    const incomes = sessionTransactions
       .filter(t => t.type === TransactionType.INCOME && t.category === Category.VENTA_DIARIA)
       .reduce((acc, t) => acc + t.amount, 0);
       
     // GASTO_CAJA filtered strictly to avoid Structure/Supplier overlap
-    const directExpenses = transactions
+    const directExpenses = sessionTransactions
       .filter(t => t.type === TransactionType.EXPENSE && t.category === Category.GASTO_CAJA)
       .reduce((acc, t) => acc + t.amount, 0);
       
-    const staffCost = transactions.filter(t => t.category === Category.PERSONAL_HORAS).reduce((acc, t) => acc + t.amount, 0);
+    const staffCost = sessionTransactions.filter(t => t.category === Category.PERSONAL_HORAS).reduce((acc, t) => acc + t.amount, 0);
     
     return {
         totalIncome: incomes,
@@ -261,7 +280,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
         staffCost,
         net: incomes - directExpenses - staffCost
     };
-  }, [transactions]);
+  }, [sessionTransactions]);
 
   const handleSaveIncomes = async () => {
       setIsSaving(true);
@@ -272,7 +291,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
               const val = parseFloat(valStr);
               
               // Find existing transaction strictly by description AND category to avoid mixups with Session Title
-              const existing = transactions.find(tr => 
+              const existing = sessionTransactions.find(tr => 
                   tr.description === source && 
                   tr.type === TransactionType.INCOME && 
                   tr.category === Category.VENTA_DIARIA
@@ -282,11 +301,12 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                   // Create or Update
                   await onSaveTransaction({
                       id: existing ? existing.id : crypto.randomUUID(),
-                      date,
+                      date: session.date,
                       amount: val,
                       description: source,
                       category: Category.VENTA_DIARIA,
-                      type: TransactionType.INCOME
+                      type: TransactionType.INCOME,
+                      supplier: session.id // Link to this specific session
                   });
               } else if (existing && (val === 0 || isNaN(val))) {
                   await onDeleteTransaction(existing.id);
@@ -323,16 +343,17 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     try {
         const savePaymentType = async (desc: string, amountStr: string) => {
           const val = parseFloat(amountStr);
-          const existing = transactions.find(tr => tr.description === desc && tr.category === Category.DESGLOSE_PAGO);
+          const existing = sessionTransactions.find(tr => tr.description === desc && tr.category === Category.DESGLOSE_PAGO);
 
           if (val > 0) {
             await onSaveTransaction({
               id: existing ? existing.id : crypto.randomUUID(),
-              date,
+              date: session.date,
               amount: val,
               description: desc,
               category: Category.DESGLOSE_PAGO, // Important: This category is excluded from dashboard totals
-              type: TransactionType.INCOME
+              type: TransactionType.INCOME,
+              supplier: session.id // Link to this session
             });
           } else if (existing) {
             await onDeleteTransaction(existing.id);
@@ -351,11 +372,12 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     if (!expenseAmount || !expenseDesc) return;
     await onSaveTransaction({
       id: crypto.randomUUID(),
-      date,
+      date: session.date,
       amount: parseFloat(expenseAmount),
       description: expenseDesc,
       category: Category.GASTO_CAJA,
-      type: TransactionType.EXPENSE
+      type: TransactionType.EXPENSE,
+      supplier: session.id // Link to this session
     });
     setExpenseAmount('');
     setExpenseDesc('');
@@ -366,7 +388,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
       const hours = parseFloat(hoursStr);
       // Find existing transaction based on category and description match
       // We assume description format "Name (Xh)" for persistence
-      const existing = transactions.find(t => 
+      const existing = sessionTransactions.find(t => 
           t.category === Category.PERSONAL_HORAS && 
           t.description.startsWith(emp.name)
       );
@@ -375,11 +397,12 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
           const amount = hours * emp.cost;
           await onSaveTransaction({
               id: existing ? existing.id : crypto.randomUUID(),
-              date,
+              date: session.date,
               amount: amount,
               description: `${emp.name} (${hours}h)`,
               category: Category.PERSONAL_HORAS,
-              type: TransactionType.EXPENSE
+              type: TransactionType.EXPENSE,
+              supplier: session.id // Link to this session
           });
       } else if (existing) {
           await onDeleteTransaction(existing.id);
@@ -396,8 +419,8 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
         onClick={() => setIsOpen(!isOpen)}
       >
         <div>
-            <h3 className="text-lg font-bold text-slate-900">{description || 'Sesión sin nombre'}</h3>
-            <p className="text-sm text-slate-500">{format(parseISO(date), 'dd MMMM yyyy', { locale: es })}</p>
+            <h3 className="text-lg font-bold text-slate-900">{session.description || 'Sesión sin nombre'}</h3>
+            <p className="text-sm text-slate-500">{format(parseISO(session.date), 'dd MMMM yyyy', { locale: es })}</p>
         </div>
         <div className="text-right">
              <span className="text-xs uppercase font-bold text-slate-400 mb-1 block">Resultado Sesión</span>
@@ -437,7 +460,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                </div>
                <div className="mt-6 text-right">
                    <button 
-                        onClick={(e) => { e.stopPropagation(); onDeleteSession(date); }}
+                        onClick={(e) => { e.stopPropagation(); onDeleteSession(session); }}
                         className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center gap-2 ml-auto"
                    >
                        <Trash2 size={14} /> Eliminar Sesión Completa
@@ -622,10 +645,10 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                        </div>
 
                        <div className="space-y-2">
-                           {transactions.filter(t => t.category === Category.GASTO_CAJA && t.type === TransactionType.EXPENSE).length === 0 && (
+                           {sessionTransactions.filter(t => t.category === Category.GASTO_CAJA && t.type === TransactionType.EXPENSE).length === 0 && (
                                <p className="text-center text-slate-400 text-xs py-2 italic">Sin gastos directos</p>
                            )}
-                           {transactions.filter(t => t.category === Category.GASTO_CAJA && t.type === TransactionType.EXPENSE).map(t => (
+                           {sessionTransactions.filter(t => t.category === Category.GASTO_CAJA && t.type === TransactionType.EXPENSE).map(t => (
                                <div key={t.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100 text-sm">
                                    <span className="text-slate-700 font-medium">{t.description}</span>
                                    <div className="flex items-center gap-3">
@@ -657,7 +680,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                {hourlyEmployees.map(emp => {
                                    // Check if there is already a transaction for this employee in this session
-                                   const existingT = transactions.find(t => 
+                                   const existingT = sessionTransactions.find(t => 
                                        t.category === Category.PERSONAL_HORAS && 
                                        t.description.startsWith(emp.name)
                                    );
@@ -1112,14 +1135,15 @@ const App: React.FC = () => {
 
   const cajaMetrics = useMemo(() => {
     const cleanTransactions = transactions.filter(t => t.category !== Category.DESGLOSE_PAGO);
-    const cajaDates = new Set<string>();
-    cleanTransactions.forEach(t => {
-        if (CATEGORIES_BY_SECTION.CAJA.includes(t.category as Category)) {
-            cajaDates.add(t.date);
-        }
-    });
-    const sortedUniqueDates = Array.from(cajaDates).sort((a, b) => b.localeCompare(a));
-    const sessionCount = cajaDates.size;
+    // Identify Session Headers (Transactions created by "Add Session")
+    // Logic: Venta Diaria + Income + Description NOT in Static List
+    const sessionHeaders = transactions.filter(t => 
+        t.category === Category.VENTA_DIARIA && 
+        t.type === TransactionType.INCOME && 
+        !STATIC_INCOME_SOURCES.includes(t.description)
+    ).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)); // Sort by date then ID
+
+    const sessionCount = sessionHeaders.length;
     
     // Logic for "Caja View": Exclude Fixed Costs AND Suppliers to show purely "Cashbox" performance
     const variableTransactions = cleanTransactions.filter(t => {
@@ -1138,7 +1162,7 @@ const App: React.FC = () => {
         sessionCount,
         accumulatedNet: variableSummary.netBalance,
         totalNet,
-        sortedUniqueDates
+        sessionHeaders
     };
   }, [transactions]);
 
@@ -1442,7 +1466,7 @@ const App: React.FC = () => {
                  
                  {isCajaHistoryOpen && (
                      <div className="bg-white">
-                        {cajaMetrics.sortedUniqueDates.length === 0 ? (
+                        {cajaMetrics.sessionHeaders.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-center">
                                 <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
                                     <FileText className="text-slate-300" size={32} />
@@ -1451,46 +1475,54 @@ const App: React.FC = () => {
                                 <p className="text-slate-500 text-sm">Añade una nueva sesión para empezar a llevar el control de caja.</p>
                             </div>
                         ) : (
-                            cajaMetrics.sortedUniqueDates.map(date => {
-                                // Find the "Title" transaction. It should be a VENTA_DIARIA but NOT one of the static income inputs.
-                                const sessionTitleTransaction = transactions.find(t => 
-                                    t.date === date && 
-                                    !STATIC_INCOME_SOURCES.includes(t.description) && // Important: Exclude standard inputs
-                                    t.category === Category.VENTA_DIARIA
-                                );
-                                
-                                const desc = sessionTitleTransaction ? sessionTitleTransaction.description : `Sesión ${format(parseISO(date), 'dd/MM')}`;
-                                
-                                return (
-                                    <SessionEditor 
-                                        key={date}
-                                        date={date}
-                                        description={desc}
-                                        transactions={transactions.filter(t => t.date === date)}
-                                        employees={employees}
-                                        onSaveTransaction={handleSaveTransaction}
-                                        onDeleteTransaction={async (id) => {
-                                            if(window.confirm('¿Eliminar esta transacción?')) {
-                                               await deleteTransaction(id);
-                                               setTransactions(await getTransactions());
-                                            }
-                                        }}
-                                        onDeleteSession={async (d) => {
-                                            if(window.confirm('¿Borrar toda la sesión y sus datos asociados?')) {
-                                                const toDelete = transactions.filter(t => t.date === d);
-                                                try {
-                                                    for(const t of toDelete) {
-                                                       await deleteTransaction(t.id);
-                                                    }
-                                                    setTransactions(await getTransactions());
-                                                } catch (e) {
-                                                    handleError(e);
+                            cajaMetrics.sessionHeaders.map(session => (
+                                <SessionEditor 
+                                    key={session.id}
+                                    session={session}
+                                    allTransactions={transactions}
+                                    employees={employees}
+                                    onSaveTransaction={handleSaveTransaction}
+                                    onDeleteTransaction={async (id) => {
+                                        if(window.confirm('¿Eliminar esta transacción?')) {
+                                           await deleteTransaction(id);
+                                           setTransactions(await getTransactions());
+                                        }
+                                    }}
+                                    onDeleteSession={async (sessionToDelete) => {
+                                        if(window.confirm('¿Borrar toda la sesión y sus datos asociados?')) {
+                                            // Delete the session header
+                                            const idsToDelete = [sessionToDelete.id];
+                                            
+                                            // Identify linked children to delete
+                                            // Logic mirrors SessionEditor: Linked by ID OR Linked by Date (Legacy)
+                                            const children = transactions.filter(t => {
+                                                if (t.id === sessionToDelete.id) return false;
+                                                // Link Type 1: Explicit ID
+                                                if (t.supplier === sessionToDelete.id) return true;
+                                                // Link Type 2: Legacy Date Match (only if no explicit link)
+                                                // Important: Exclude other session headers
+                                                const isHeader = t.category === Category.VENTA_DIARIA && !STATIC_INCOME_SOURCES.includes(t.description);
+                                                if (t.date === sessionToDelete.date && !t.supplier && !isHeader) {
+                                                    return true;
                                                 }
+                                                return false;
+                                            });
+                                            
+                                            children.forEach(c => idsToDelete.push(c.id));
+
+                                            try {
+                                                // Sequential delete to avoid race conditions with simple backend logic
+                                                for(const id of idsToDelete) {
+                                                   await deleteTransaction(id);
+                                                }
+                                                setTransactions(await getTransactions());
+                                            } catch (e) {
+                                                handleError(e);
                                             }
-                                        }}
-                                    />
-                                );
-                            })
+                                        }
+                                    }}
+                                />
+                            ))
                         )}
                      </div>
                  )}
