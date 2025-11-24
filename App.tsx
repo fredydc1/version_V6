@@ -212,11 +212,6 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
 
-  // Staff Form State
-  const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [staffHours, setStaffHours] = useState(''); // For hourly
-  const [staffAmount, setStaffAmount] = useState(''); // For extra payments
-
   // Filter only hourly employees for session reporting
   const hourlyEmployees = useMemo(() => employees.filter(e => e.type === 'HOURLY'), [employees]);
 
@@ -243,12 +238,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
       card: cardT ? cardT.amount.toString() : '',
       transfer: transferT ? transferT.amount.toString() : ''
     });
-
-    // Init employee selector with only hourly employees
-    if (!selectedEmployee && hourlyEmployees.length > 0) {
-      setSelectedEmployee(hourlyEmployees[0].id);
-    }
-  }, [transactions, employees, selectedEmployee, hourlyEmployees]);
+  }, [transactions]);
 
   const sessionSummary = useMemo(() => {
     // We strictly use VENTA_DIARIA for the Total Income calculation to avoid double counting payments
@@ -350,35 +340,29 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     setExpenseDesc('');
   };
 
-  const handleAddStaff = () => {
-    const emp = employees.find(e => e.id === selectedEmployee);
-    if (!emp) return;
+  // Helper to handle updates for a specific hourly employee from the list
+  const handleUpdateHourlyStaff = (emp: Employee, hoursStr: string) => {
+      const hours = parseFloat(hoursStr);
+      // Find existing transaction based on category and description match
+      // We assume description format "Name (Xh)" for persistence
+      const existing = transactions.find(t => 
+          t.category === Category.PERSONAL_HORAS && 
+          t.description.startsWith(emp.name)
+      );
 
-    let amount = 0;
-    let desc = '';
-    
-    // Always treat as HOURLY in session editor as we filtered the list
-    if (emp.type === 'HOURLY') {
-        if (!staffHours) return;
-        amount = parseFloat(staffHours) * emp.cost;
-        desc = `${emp.name} (${staffHours}h)`;
-    } else {
-         // Fallback just in case, though UI prevents it
-         if (!staffAmount) amount = emp.cost;
-         else amount = parseFloat(staffAmount);
-         desc = `${emp.name} (Pago/Extra)`;
-    }
-
-    onSaveTransaction({
-        id: crypto.randomUUID(),
-        date,
-        amount: amount,
-        description: desc,
-        category: Category.PERSONAL_HORAS,
-        type: TransactionType.EXPENSE
-    });
-    setStaffHours('');
-    setStaffAmount('');
+      if (hours > 0) {
+          const amount = hours * emp.cost;
+          onSaveTransaction({
+              id: existing ? existing.id : crypto.randomUUID(),
+              date,
+              amount: amount,
+              description: `${emp.name} (${hours}h)`,
+              category: Category.PERSONAL_HORAS,
+              type: TransactionType.EXPENSE
+          });
+      } else if (existing) {
+          onDeleteTransaction(existing.id);
+      }
   };
 
   const currentPaymentTotal = (parseFloat(paymentValues.cash)||0) + (parseFloat(paymentValues.card)||0) + (parseFloat(paymentValues.transfer)||0);
@@ -643,50 +627,52 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
 
                {isStaffOpen && (
                    <div className="p-4 bg-white border-t border-slate-100">
-                        <div className="flex flex-col md:flex-row gap-3 mb-6 items-end bg-slate-50 p-3 rounded-lg border border-slate-100">
-                           <div className="flex-1 w-full">
-                               <label className="block text-xs font-medium text-slate-600 mb-1">Empleado</label>
-                               <select 
-                                  value={selectedEmployee} 
-                                  onChange={(e) => setSelectedEmployee(e.target.value)} 
-                                  className="w-full p-2 border border-slate-200 rounded-md bg-white"
-                               >
-                                  {hourlyEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                               </select>
-                           </div>
-                           
-                           <div className="w-full md:w-32">
-                               <label className="block text-xs font-medium text-slate-600 mb-1">Horas</label>
-                               <input 
-                                    type="number" 
-                                    value={staffHours} 
-                                    onChange={(e) => setStaffHours(e.target.value)} 
-                                    className="w-full p-2 border border-slate-200 rounded-md bg-white" 
-                                    placeholder="0" 
-                               />
-                           </div>
+                       {hourlyEmployees.length === 0 ? (
+                           <p className="text-slate-400 text-center py-4 italic text-sm">No hay personal por horas registrado.</p>
+                       ) : (
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                               {hourlyEmployees.map(emp => {
+                                   // Check if there is already a transaction for this employee in this session
+                                   const existingT = transactions.find(t => 
+                                       t.category === Category.PERSONAL_HORAS && 
+                                       t.description.startsWith(emp.name)
+                                   );
+                                   
+                                   // Calculate hours from amount if exists, or empty
+                                   // Logic: amount = hours * cost => hours = amount / cost
+                                   const currentHours = existingT ? (existingT.amount / emp.cost).toFixed(2).replace(/[.,]00$/, '') : '';
+                                   const currentCost = existingT ? existingT.amount : 0;
 
-                           <button 
-                                onClick={handleAddStaff}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-md"
-                           >
-                               <Plus size={18} />
-                           </button>
-                       </div>
-
-                       <div className="space-y-2">
-                           {transactions.filter(t => t.category === Category.PERSONAL_HORAS).length === 0 && (
-                               <p className="text-center text-slate-400 text-xs py-2 italic">Sin horas registradas</p>
-                           )}
-                           {transactions.filter(t => t.category === Category.PERSONAL_HORAS).map(t => (
-                               <div key={t.id} className="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100 text-sm">
-                                   <span className="text-slate-700 font-medium">{t.description}</span>
-                                   <div className="flex items-center gap-3">
-                                        <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
-                                        <button onClick={() => onDeleteTransaction(t.id)} className="text-slate-300 hover:text-rose-500"><Trash2 size={14}/></button>
-                                   </div>
-                               </div>
-                           ))}
+                                   return (
+                                       <div key={emp.id} className="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
+                                           <div className="flex-1">
+                                               <p className="font-bold text-slate-700 text-sm">{emp.name}</p>
+                                               <p className="text-xs text-slate-500">{emp.cost.toLocaleString('es-ES')} €/h</p>
+                                           </div>
+                                           <div className="flex items-center gap-3">
+                                               <div className="w-20">
+                                                   <input 
+                                                       type="number" 
+                                                       placeholder="0 h"
+                                                       value={currentHours}
+                                                       onChange={(e) => handleUpdateHourlyStaff(emp, e.target.value)}
+                                                       className="w-full p-2 text-right border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold"
+                                                   />
+                                               </div>
+                                               <div className="w-24 text-right">
+                                                   <span className={`font-black text-sm ${currentCost > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                                                       {currentCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                                   </span>
+                                               </div>
+                                           </div>
+                                       </div>
+                                   );
+                               })}
+                           </div>
+                       )}
+                       <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-sm">
+                           <span className="font-bold text-slate-500">Total Personal Sesión</span>
+                           <span className="font-black text-rose-600">{sessionSummary.staffCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
                        </div>
                    </div>
                )}
@@ -1021,25 +1007,19 @@ const App: React.FC = () => {
       }
     });
 
-    const rawItems = [
-      { name: 'Gastos de Estructura', amount: estructura, color: 'bg-emerald-500' },
-      { name: 'Proveedores', amount: proveedores, color: 'bg-blue-500' },
-      { name: 'Personal Fijo', amount: personalFijo, color: 'bg-purple-600' },
-      { name: 'Personal Horas', amount: personalHoras, color: 'bg-purple-400' },
-      { name: 'Sesión (Gastos Caja)', amount: sesion, color: 'bg-slate-500' },
-    ];
-
-    const items = rawItems
-      .filter(i => i.amount > 0)
-      .sort((a, b) => b.amount - a.amount)
-      .map(item => ({
-        category: item.name,
-        amount: item.amount,
+    // Fixed list of items, no filtering of 0 values, fixed order
+    const items = [
+      { category: 'Gastos de Estructura', amount: estructura, colorClass: 'bg-emerald-500' },
+      { category: 'Proveedores', amount: proveedores, colorClass: 'bg-blue-500' },
+      { category: 'Personal Fijo', amount: personalFijo, colorClass: 'bg-purple-600' },
+      { category: 'Personal Horas', amount: personalHoras, colorClass: 'bg-purple-400' },
+      { category: 'Sesión (Gastos Caja)', amount: sesion, colorClass: 'bg-slate-500' },
+    ].map(item => ({
+        ...item,
         percentage: dashboardSummary.totalIncome > 0
           ? (item.amount / dashboardSummary.totalIncome) * 100
-          : 0,
-        colorClass: item.color
-      }));
+          : 0
+    }));
 
     return { items, totalExpensesInBreakdown };
   }, [dashboardData, dashboardSummary.totalIncome]);
@@ -1307,6 +1287,9 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* ... Rest of the components remain same as they were handled by previous XML unless changes needed inside them ... */}
+        {/* Re-rendering other views to ensure file integrity although logic changed only in Dashboard and SessionEditor */}
+        
         {activeView === 'anual' && (
           <div className="space-y-8 animate-fade-in">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1456,14 +1439,11 @@ const App: React.FC = () => {
                                         onDeleteTransaction={handleDelete}
                                         onDeleteSession={async (d) => {
                                             if(window.confirm('¿Borrar toda la sesión y sus datos asociados?')) {
-                                                // Batch delete logic should be improved for real DB, but acceptable for now
-                                                // In a real app we'd call a dedicated endpoint
                                                 const toDelete = transactions.filter(t => t.date === d);
                                                 try {
                                                     for(const t of toDelete) {
                                                        await deleteTransaction(t.id);
                                                     }
-                                                    // Refresh local state manually after loop to avoid multiple re-renders or fetch again
                                                     setTransactions(await getTransactions());
                                                 } catch (e) {
                                                     handleError(e);
@@ -1480,6 +1460,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* ... Rest of existing components/views (Personal, Proveedores, Estructura) ... */}
         {activeView === 'personal' && (
             <div className="space-y-6 animate-fade-in">
                  <div className="flex justify-between items-center">
@@ -1817,7 +1798,8 @@ const App: React.FC = () => {
             )}
 
             {supplierViewMode === 'ADD_EXPENSE' && (
-                <>
+                // ... same logic as before for ADD_EXPENSE ...
+                 <>
                   <button 
                      onClick={() => setSupplierViewMode('SUMMARY')}
                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-2 shadow-sm hover:bg-indigo-700 transition-all"
@@ -1907,7 +1889,8 @@ const App: React.FC = () => {
             )}
 
             {supplierViewMode === 'MANAGE' && (
-                <>
+                // ... same logic for MANAGE ...
+                 <>
                    <button 
                      onClick={() => setSupplierViewMode('SUMMARY')}
                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-2 shadow-sm hover:bg-indigo-700 transition-all"
@@ -2105,7 +2088,7 @@ const App: React.FC = () => {
                  </>
              )}
 
-             {/* ADD/EDIT MODE */}
+             {/* ADD/EDIT/MANAGE MODES for Structure (Standard form code omitted for brevity as it's repetitive but preserved in XML logic) */}
              {structureViewMode === 'ADD_EXPENSE' && (
                  <>
                     <button 
@@ -2181,7 +2164,6 @@ const App: React.FC = () => {
                  </>
              )}
 
-             {/* MANAGE MODE */}
              {structureViewMode === 'MANAGE' && (
                  <>
                     <button 
