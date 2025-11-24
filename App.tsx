@@ -1629,8 +1629,21 @@ const App: React.FC = () => {
                                      {employees.filter(e => e.type === employeeViewTab).map(emp => {
                                          // Calculate total cost for this employee in current month
                                          const empMonthCost = dashboardData
-                                             .filter(t => t.description.includes(emp.name)) // Simple match by name
+                                             .filter(t => t.description.includes(emp.name) && t.category === Category.PERSONAL_HORAS)
                                              .reduce((acc, t) => acc + t.amount, 0);
+
+                                         // Calculate total hours for this employee in current month
+                                         const empMonthHours = dashboardData
+                                             .filter(t => t.description.includes(emp.name) && t.category === Category.PERSONAL_HORAS)
+                                             .reduce((acc, t) => {
+                                                  // Try to parse "Name (Xh)" from description
+                                                  const match = t.description.match(/\(([\d.]+)h\)/);
+                                                  if (match && match[1]) {
+                                                      return acc + parseFloat(match[1]);
+                                                  }
+                                                  // Fallback: amount / cost
+                                                  return acc + (emp.cost > 0 ? t.amount / emp.cost : 0);
+                                             }, 0);
 
                                          return (
                                              <div key={emp.id} className="p-6 bg-slate-50 border border-slate-100 rounded-xl flex justify-between items-start group hover:border-indigo-200 transition-colors">
@@ -1646,6 +1659,15 @@ const App: React.FC = () => {
                                                      <div className="mt-4">
                                                          {emp.type === 'HOURLY' && empMonthCost === 0 ? (
                                                              <p className="text-xs text-slate-400 italic">No hay horas registradas para este empleado en la pestaña 'Caja' este mes.</p>
+                                                         ) : emp.type === 'HOURLY' ? (
+                                                             <>
+                                                                <p className="text-sm font-bold text-slate-600 mb-1">
+                                                                   Horas Totales: {empMonthHours.toLocaleString('es-ES', { maximumFractionDigits: 1 })} h
+                                                                </p>
+                                                                <p className="text-lg font-black text-orange-500">
+                                                                   Coste Total: {empMonthCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                                                                </p>
+                                                             </>
                                                          ) : (
                                                              <p className="text-lg font-black text-orange-500">
                                                                  Coste Total: {empMonthCost.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
@@ -1776,11 +1798,11 @@ const App: React.FC = () => {
                              currentList.slice(0, 10).map(t => (
                                  <div key={t.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-center">
                                       <div>
-                                          <p className="font-bold text-slate-800">{t.description}</p>
+                                          <p className="font-bold text-slate-800">{t.supplier || 'Sin Proveedor'}</p>
                                           <p className="text-xs text-slate-500 flex items-center gap-2">
                                               <span>{format(parseISO(t.date), 'dd MMM yyyy', { locale: es })}</span>
                                               <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                                              <span>{t.supplier || 'Varios'}</span>
+                                              <span>{t.description}</span>
                                           </p>
                                       </div>
                                       <div className="flex items-center gap-3">
