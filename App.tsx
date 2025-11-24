@@ -420,7 +420,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
               );
 
               if (hours > 0) {
-                  const amount = hours * emp.cost;
+                  const amount = Number((hours * emp.cost).toFixed(2)); // Ensure number
                   await onSaveTransaction({
                       id: existing ? existing.id : crypto.randomUUID(),
                       date: session.date,
@@ -961,6 +961,7 @@ const App: React.FC = () => {
       const fixedEmployees = employees.filter(e => e.type === 'FIXED' && e.active);
       const date = `${dashboardMonth}-01`; // 1st of month
       
+      let createdCount = 0;
       try {
           for (const emp of fixedEmployees) {
               const amount = emp.cost + (emp.extras || 0);
@@ -981,10 +982,17 @@ const App: React.FC = () => {
                       description: `Nómina ${monthName}: ${emp.name}`,
                       type: TransactionType.EXPENSE
                   });
+                  createdCount++;
               }
           }
-          setTransactions(await getTransactions()); // refresh
-          alert('Nóminas generadas correctamente. Ya aparecen en el dashboard.');
+          // Force explicit refresh
+          setTransactions(await getTransactions()); 
+          
+          if(createdCount > 0) {
+              alert(`${createdCount} nóminas generadas correctamente. Ya aparecen en el dashboard.`);
+          } else {
+              alert('No se generaron nóminas nuevas (posiblemente ya existían para este mes).');
+          }
       } catch(e) {
           handleError(e);
       }
@@ -1105,38 +1113,48 @@ const App: React.FC = () => {
   const dashboardSummary = useMemo(() => calculateSummary(dashboardData), [dashboardData]);
 
   const breakdownData = useMemo(() => {
-    let estructura = 0;
-    let proveedores = 0;
-    let personalFijo = 0;
-    let personalHoras = 0;
-    let sesion = 0;
+    // Initialize counters
+    const totals = {
+        estructura: 0,
+        proveedores: 0,
+        personalFijo: 0,
+        personalHoras: 0,
+        sesion: 0,
+        otros: 0
+    };
     let totalExpensesInBreakdown = 0;
 
     dashboardData.forEach(t => {
       if (t.type === TransactionType.EXPENSE) {
+        const amount = Number(t.amount) || 0; // Ensure numeric
+        totalExpensesInBreakdown += amount;
+
         if (CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category)) {
-          estructura += t.amount;
+            totals.estructura += amount;
         } else if (CATEGORIES_BY_SECTION.PROVEEDORES.includes(t.category as Category)) {
-          proveedores += t.amount;
+            totals.proveedores += amount;
         } else if (t.category === Category.PERSONAL_HORAS) {
-          personalHoras += t.amount;
+            totals.personalHoras += amount;
         } else if (t.category === Category.NOMINA_FIJA || t.category === Category.SEGURIDAD_SOCIAL) {
-          personalFijo += t.amount;
+            totals.personalFijo += amount;
         } else if (t.category === Category.GASTO_CAJA) {
-          sesion += t.amount;
+            totals.sesion += amount;
+        } else {
+            totals.otros += amount;
         }
-        totalExpensesInBreakdown += t.amount;
       }
     });
 
-    // Fixed list of items, no filtering of 0 values, fixed order
     const items = [
-      { category: 'Estructura', amount: estructura, colorClass: 'bg-emerald-500' },
-      { category: 'Proveedores', amount: proveedores, colorClass: 'bg-blue-500' },
-      { category: 'Personal Fijo', amount: personalFijo, colorClass: 'bg-purple-600' },
-      { category: 'Personal Horas', amount: personalHoras, colorClass: 'bg-purple-400' },
-      { category: 'Gastos Caja', amount: sesion, colorClass: 'bg-slate-500' },
-    ].map(item => ({
+      { category: 'Estructura', amount: totals.estructura, colorClass: 'bg-emerald-500' },
+      { category: 'Proveedores', amount: totals.proveedores, colorClass: 'bg-blue-500' },
+      { category: 'Personal Fijo', amount: totals.personalFijo, colorClass: 'bg-purple-600' },
+      { category: 'Personal Horas', amount: totals.personalHoras, colorClass: 'bg-purple-400' },
+      { category: 'Gastos Caja', amount: totals.sesion, colorClass: 'bg-slate-500' },
+      { category: 'Otros', amount: totals.otros, colorClass: 'bg-gray-400' } // Catch-all category
+    ]
+    .filter(item => item.amount > 0 || item.category !== 'Otros') // Only show Other if it has value
+    .map(item => ({
         ...item,
         percentage: dashboardSummary.totalIncome > 0
           ? (item.amount / dashboardSummary.totalIncome) * 100
