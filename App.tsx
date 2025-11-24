@@ -448,8 +448,8 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
 
   // Helper for color logic
   const getNetColor = (amount: number) => {
-      if (amount < 0) return 'text-rose-600';
-      if (amount > 1500) return 'text-emerald-600';
+      if (amount < 0) return 'text-red-600';
+      if (amount > 1500) return 'text-green-600';
       return 'text-orange-500';
   };
 
@@ -2233,38 +2233,6 @@ const App: React.FC = () => {
                             <div className="p-3 bg-rose-50 rounded-full">
                                 <Building2 className="text-rose-500" size={32} />
                             </div>
-                        </div>
-                    </div>
-
-                    {/* Ranking Accordion */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                                <PieChartIcon size={18} className="text-slate-400"/>
-                                Gasto por Concepto
-                            </h3>
-                        </div>
-                        <div className="p-6">
-                            {expensesByConcept.length === 0 ? (
-                                <p className="text-slate-400 text-sm text-center italic">No hay gastos para mostrar.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {expensesByConcept.slice(0, 5).map((item, idx) => (
-                                        <div key={idx} className="flex items-center gap-4">
-                                            <span className="text-slate-400 font-bold w-4 text-center">{idx + 1}</span>
-                                            <div className="flex-1">
-                                                <div className="flex justify-between text-sm mb-1">
-                                                    <span className="font-bold text-slate-700">{item.name}</span>
-                                                    <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
-                                                </div>
-                                                <div className="w-full bg-slate-100 rounded-full h-2">
-                                                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(item.amount / viewSummary.totalExpense) * 100}%` }}></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     </div>
 
