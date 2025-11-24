@@ -1,0 +1,5 @@
+{
+  "name": "App Finanza v5",
+  "description": "Aplicación de control financiero para negocios con dashboard interactivo, gráficos de rendimiento y análisis inteligente mediante Gemini AI. Preparada para escalabilidad.",
+  "requestFramePermissions": []
+}
