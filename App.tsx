@@ -25,13 +25,15 @@ import {
   Building2,
   Coins,
   ArrowLeft,
-  LayoutGrid
+  LayoutGrid,
+  Database,
+  Unplug
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { Transaction, TransactionType, Category, Employee, Supplier, FixedExpenseItem } from './types';
-import { getTransactions, saveTransaction, deleteTransaction, calculateSummary, getEmployees, saveEmployee, deleteEmployee, getSuppliers, saveSupplier, deleteSupplier, getFixedExpenses, saveFixedExpense, deleteFixedExpense } from './services/financeService';
+import { getTransactions, saveTransaction, deleteTransaction, calculateSummary, getEmployees, saveEmployee, deleteEmployee, getSuppliers, saveSupplier, deleteSupplier, getFixedExpenses, saveFixedExpense, deleteFixedExpense, setManualDatabaseUrl, disconnectManualDatabase, getStoredConnectionStatus } from './services/financeService';
 import { SummaryCard } from './components/SummaryCard';
 import { CATEGORIES_BY_SECTION } from './constants';
 
@@ -43,6 +45,98 @@ const STATIC_INCOME_SOURCES = [
   'Barra 4', 'Restaurante', 'VIP', 
   'Tickets', 'Vapers', 'Shishas'
 ];
+
+interface DbConfigModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
+  const [url, setUrl] = useState('');
+  const [status, setStatus] = useState(getStoredConnectionStatus());
+
+  if (!isOpen) return null;
+
+  const handleSave = () => {
+    if(!url.trim()) return;
+    setManualDatabaseUrl(url.trim());
+    onClose();
+  };
+
+  const handleDisconnect = () => {
+      if(window.confirm('¿Desconectar la base de datos actual?')) {
+          disconnectManualDatabase();
+          onClose();
+      }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4 animate-fade-in backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Database className="text-indigo-600" size={24} />
+            Configuración Base de Datos
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-6">
+            <div className={`p-4 rounded-lg border ${status.isConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                <div className="flex items-start gap-3">
+                    {status.isConnected ? <div className="w-3 h-3 mt-1.5 rounded-full bg-emerald-500 shadow-sm" /> : <Unplug className="text-amber-500 mt-0.5" size={18}/>}
+                    <div>
+                        <h4 className={`font-bold text-sm ${status.isConnected ? 'text-emerald-800' : 'text-amber-800'}`}>
+                            {status.isConnected ? 'Conectado a Neon DB' : 'No conectado'}
+                        </h4>
+                        <p className="text-xs mt-1 text-slate-600">
+                            {status.isConnected 
+                                ? `Modo: ${status.type === 'MANUAL' ? 'Configuración Manual' : 'Variable de Entorno'}`
+                                : 'La aplicación no ha detectado la variable de entorno VITE_DATABASE_URL.'
+                            }
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Conexión Manual (Connection String)</label>
+                <p className="text-xs text-slate-500 mb-3">
+                    Pega aquí la URL de conexión de tu base de datos Neon (ej: <code>postgres://usuario:pass@...</code>).
+                    Esta configuración se guardará en tu navegador.
+                </p>
+                <input 
+                    type="text" 
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="postgres://..."
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono text-slate-600"
+                />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+                 {status.type === 'MANUAL' && (
+                    <button 
+                        onClick={handleDisconnect}
+                        className="flex-1 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold py-3 rounded-lg transition-colors"
+                    >
+                        Desconectar
+                    </button>
+                 )}
+                 <button 
+                    onClick={handleSave}
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors shadow-md"
+                 >
+                    Guardar Conexión
+                 </button>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface SessionEditorProps {
   date: string;
@@ -625,6 +719,8 @@ const App: React.FC = () => {
       date: new Date().toISOString().split('T')[0]
   });
 
+  const [isDbConfigOpen, setIsDbConfigOpen] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       setTransactions(await getTransactions());
@@ -635,12 +731,20 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
+  const handleError = (error: any) => {
+      if (error?.message === "DB_NOT_CONNECTED") {
+          setIsDbConfigOpen(true);
+      } else {
+          alert("Error de operación. Verifica la consola.");
+      }
+  };
+
   const handleSaveTransaction = async (t: Transaction) => {
     try {
       const updated = await saveTransaction(t);
       setTransactions(updated);
     } catch (error) {
-      alert("Error al guardar: No se pudo conectar con la base de datos.");
+      handleError(error);
     }
   };
 
@@ -650,7 +754,7 @@ const App: React.FC = () => {
         const updated = await deleteTransaction(id);
         setTransactions(updated);
       } catch (error) {
-        alert("Error al eliminar: No se pudo conectar con la base de datos.");
+        handleError(error);
       }
     }
   };
@@ -670,7 +774,7 @@ const App: React.FC = () => {
     };
     handleSaveTransaction(initTransaction);
     setNewSessionDesc('');
-    alert("Sesión creada. Ahora puedes añadir detalles en el historial inferior.");
+    // Don't alert on success, cleaner UI
   };
 
   const exportToCSV = () => {
@@ -712,7 +816,7 @@ const App: React.FC = () => {
         setIsEmployeeFormOpen(false); // Close accordion on save
         setNewEmployee({ active: true }); 
       } catch (error) {
-        alert("Error al guardar empleado. Verifica tu conexión a la BD.");
+        handleError(error);
       }
   };
 
@@ -737,7 +841,7 @@ const App: React.FC = () => {
                 setNewEmployee({ active: true });
             }
           } catch (error) {
-            alert("Error al eliminar empleado.");
+             handleError(error);
           }
       }
   };
@@ -749,7 +853,7 @@ const App: React.FC = () => {
         setSuppliers(updated);
         setNewSupplierName('');
       } catch (error) {
-        alert("Error al guardar proveedor.");
+         handleError(error);
       }
   };
 
@@ -759,7 +863,7 @@ const App: React.FC = () => {
             const updated = await deleteSupplier(id);
             setSuppliers(updated);
           } catch (error) {
-             alert("Error al eliminar proveedor.");
+             handleError(error);
           }
       }
   };
@@ -797,7 +901,7 @@ const App: React.FC = () => {
         setFixedExpenses(updated);
         setNewFixedExpenseName('');
       } catch (error) {
-         alert("Error al guardar concepto fijo.");
+         handleError(error);
       }
   };
 
@@ -807,7 +911,7 @@ const App: React.FC = () => {
             const updated = await deleteFixedExpense(id);
             setFixedExpenses(updated);
           } catch (error) {
-            alert("Error al eliminar concepto.");
+             handleError(error);
           }
       }
   };
@@ -1012,6 +1116,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f3f4f6] text-slate-900 font-sans pb-24 md:pb-10">
+      <DbConfigModal isOpen={isDbConfigOpen} onClose={() => setIsDbConfigOpen(false)} />
+      
       <header className="bg-white sticky top-0 z-40 shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
@@ -1026,8 +1132,15 @@ const App: React.FC = () => {
               {renderNavButton('estructura', 'Estructura')}
               {renderNavButton('anual', 'Anual')}
             </div>
-            <div className="flex items-center space-x-4">
-               <button onClick={() => window.location.reload()} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <div className="flex items-center space-x-2">
+               <button 
+                    onClick={() => setIsDbConfigOpen(true)}
+                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                    title="Configuración Base de Datos"
+               >
+                    <Database size={20} />
+               </button>
+               <button onClick={() => window.location.reload()} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-50 rounded-lg transition-all">
                   <RefreshCw size={20} />
                </button>
               <div className="md:hidden">
@@ -1279,7 +1392,7 @@ const App: React.FC = () => {
                                                     // Refresh local state manually after loop to avoid multiple re-renders or fetch again
                                                     setTransactions(await getTransactions());
                                                 } catch (e) {
-                                                    alert("Error al eliminar sesión.");
+                                                    handleError(e);
                                                 }
                                             }
                                         }}

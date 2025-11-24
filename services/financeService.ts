@@ -3,39 +3,66 @@ import { Transaction, TransactionType, Employee, Supplier, FixedExpenseItem, Cat
 
 // --- DATABASE CONNECTION ---
 
-// Helper para obtener variables de entorno tanto en Vite (navegador) como en Node (servidor)
-const getEnvVar = (key: string): string | undefined => {
-  // @ts-ignore - Vite uses import.meta.env
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+const STORAGE_KEY_DB = 'neon_db_connection_string';
+
+const getConnectionString = (): string | null => {
+  // 1. Intentar obtener variable explícita de Vite (Reemplazo estático en build time)
+  // @ts-ignore
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_DATABASE_URL) {
     // @ts-ignore
-    return import.meta.env[key];
+    return import.meta.env.VITE_DATABASE_URL;
   }
-  if (typeof process !== 'undefined' && process.env && process.env[key]) { // @ts-ignore
-    return process.env[key];
+
+  // 2. Intentar configuración manual del usuario (LocalStorage)
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem(STORAGE_KEY_DB);
+    if (stored) return stored;
   }
-  return undefined;
+
+  return null;
 };
 
-const getSqlClient = () => {
-  try {
-    // 1. Intentamos obtener la URL explícita para frontend (VITE_DATABASE_URL)
-    //    IMPORTANTE: El usuario debe configurar esta variable en Netlify/Environment
-    const connectionString = getEnvVar('VITE_DATABASE_URL') || getEnvVar('NETLIFY_DATABASE_URL');
-    
-    if (connectionString) {
-      console.log("✅ Conectando a Neon DB...");
-      return neon(connectionString);
+let sqlInstance: any = null;
+
+const getSql = () => {
+  if (sqlInstance) return sqlInstance;
+  
+  const connectionString = getConnectionString();
+  
+  if (connectionString) {
+    try {
+      // console.log("🔌 Conectando a Neon DB...");
+      sqlInstance = neon(connectionString);
+      return sqlInstance;
+    } catch (error) {
+      console.error("Error inicializando cliente Neon:", error);
+      return null;
     }
-    
-    console.warn("⚠️ No se encontró VITE_DATABASE_URL ni NETLIFY_DATABASE_URL. La base de datos no funcionará.");
-    return null;
-  } catch (error) {
-    console.error("❌ Error crítico inicializando cliente Neon:", error);
-    return null;
   }
+  
+  return null;
 };
 
-const sql = getSqlClient();
+// API para configurar la conexión desde la UI
+export const setManualDatabaseUrl = (url: string) => {
+  if (!url) return;
+  localStorage.setItem(STORAGE_KEY_DB, url);
+  sqlInstance = null; // Reiniciar instancia
+  window.location.reload(); // Recargar para asegurar estado limpio
+};
+
+export const disconnectManualDatabase = () => {
+  localStorage.removeItem(STORAGE_KEY_DB);
+  sqlInstance = null;
+  window.location.reload();
+};
+
+export const getStoredConnectionStatus = () => {
+    return {
+        type: typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY_DB) ? 'MANUAL' : 'ENV',
+        isConnected: !!getConnectionString()
+    };
+};
 
 // --- UTILS ---
 const mapTransaction = (row: any): Transaction => ({
@@ -57,12 +84,13 @@ const mapFixedExpense = (row: any): FixedExpenseItem => ({
 
 // Helper para validar conexión antes de operaciones de escritura
 const ensureDbConnection = () => {
-    if (!sql) throw new Error("Base de datos no conectada. Configura VITE_DATABASE_URL.");
+    if (!getSql()) throw new Error("DB_NOT_CONNECTED");
 };
 
 // --- TRANSACTIONS ---
 
 export const getTransactions = async (): Promise<Transaction[]> => {
+  const sql = getSql();
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM transactions ORDER BY date DESC`;
@@ -75,6 +103,7 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 
 export const saveTransaction = async (transaction: Transaction): Promise<Transaction[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`
@@ -97,6 +126,7 @@ export const saveTransaction = async (transaction: Transaction): Promise<Transac
 
 export const deleteTransaction = async (id: string): Promise<Transaction[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`DELETE FROM transactions WHERE id = ${id}`;
@@ -126,6 +156,7 @@ export const calculateSummary = (transactions: Transaction[]) => {
 // --- EMPLOYEES ---
 
 export const getEmployees = async (): Promise<Employee[]> => {
+  const sql = getSql();
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM employees`;
@@ -138,6 +169,7 @@ export const getEmployees = async (): Promise<Employee[]> => {
 
 export const saveEmployee = async (employee: Employee): Promise<Employee[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`
@@ -159,6 +191,7 @@ export const saveEmployee = async (employee: Employee): Promise<Employee[]> => {
 
 export const deleteEmployee = async (id: string): Promise<Employee[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`DELETE FROM employees WHERE id = ${id}`;
@@ -172,6 +205,7 @@ export const deleteEmployee = async (id: string): Promise<Employee[]> => {
 // --- SUPPLIERS ---
 
 export const getSuppliers = async (): Promise<Supplier[]> => {
+  const sql = getSql();
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM suppliers`;
@@ -184,6 +218,7 @@ export const getSuppliers = async (): Promise<Supplier[]> => {
 
 export const saveSupplier = async (supplier: Supplier): Promise<Supplier[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`
@@ -200,6 +235,7 @@ export const saveSupplier = async (supplier: Supplier): Promise<Supplier[]> => {
 
 export const deleteSupplier = async (id: string): Promise<Supplier[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`DELETE FROM suppliers WHERE id = ${id}`;
@@ -213,6 +249,7 @@ export const deleteSupplier = async (id: string): Promise<Supplier[]> => {
 // --- FIXED EXPENSES (STRUCTURE) ---
 
 export const getFixedExpenses = async (): Promise<FixedExpenseItem[]> => {
+  const sql = getSql();
   if (!sql) return [];
   try {
     const rows = await sql`SELECT * FROM fixed_expenses`;
@@ -225,6 +262,7 @@ export const getFixedExpenses = async (): Promise<FixedExpenseItem[]> => {
 
 export const saveFixedExpense = async (item: FixedExpenseItem): Promise<FixedExpenseItem[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`
@@ -244,6 +282,7 @@ export const saveFixedExpense = async (item: FixedExpenseItem): Promise<FixedExp
 
 export const deleteFixedExpense = async (id: string): Promise<FixedExpenseItem[]> => {
   ensureDbConnection();
+  const sql = getSql();
   try {
     // @ts-ignore
     await sql`DELETE FROM fixed_expenses WHERE id = ${id}`;
