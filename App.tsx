@@ -184,8 +184,8 @@ interface SessionEditorProps {
   description: string;
   transactions: Transaction[];
   employees: Employee[];
-  onSaveTransaction: (t: Transaction) => void;
-  onDeleteTransaction: (id: string) => void;
+  onSaveTransaction: (t: Transaction) => Promise<void>;
+  onDeleteTransaction: (id: string) => Promise<void>;
   onDeleteSession: (date: string) => void;
 }
 
@@ -246,8 +246,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
       .filter(t => t.type === TransactionType.INCOME && t.category === Category.VENTA_DIARIA)
       .reduce((acc, t) => acc + t.amount, 0);
       
-    // Solo contar GASTO_CAJA como gastos directos de la sesión.
-    // Excluir Estructura y Proveedores aunque coincidan en fecha.
+    // GASTO_CAJA filtered strictly to avoid Structure/Supplier overlap
     const directExpenses = transactions
       .filter(t => t.type === TransactionType.EXPENSE && t.category === Category.GASTO_CAJA)
       .reduce((acc, t) => acc + t.amount, 0);
@@ -262,8 +261,9 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     };
   }, [transactions]);
 
-  const handleSaveIncomes = () => {
-      STATIC_INCOME_SOURCES.forEach(source => {
+  const handleSaveIncomes = async () => {
+      // Execute sequentially to prevent race conditions in state updates
+      for (const source of STATIC_INCOME_SOURCES) {
           const valStr = incomeValues[source];
           const val = parseFloat(valStr);
           
@@ -272,7 +272,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
           
           if (val > 0) {
               // Create or Update
-              onSaveTransaction({
+              await onSaveTransaction({
                   id: existing ? existing.id : crypto.randomUUID(),
                   date,
                   amount: val,
@@ -281,9 +281,9 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                   type: TransactionType.INCOME
               });
           } else if (existing && (val === 0 || isNaN(val))) {
-              onDeleteTransaction(existing.id);
+              await onDeleteTransaction(existing.id);
           }
-      });
+      }
       alert('Ingresos actualizados correctamente');
   };
 
@@ -305,13 +305,13 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
     setPaymentValues(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSavePayments = () => {
-    const savePaymentType = (desc: string, amountStr: string) => {
+  const handleSavePayments = async () => {
+    const savePaymentType = async (desc: string, amountStr: string) => {
       const val = parseFloat(amountStr);
       const existing = transactions.find(tr => tr.description === desc && tr.category === Category.DESGLOSE_PAGO);
 
       if (val > 0) {
-        onSaveTransaction({
+        await onSaveTransaction({
           id: existing ? existing.id : crypto.randomUUID(),
           date,
           amount: val,
@@ -320,20 +320,20 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
           type: TransactionType.INCOME
         });
       } else if (existing) {
-        onDeleteTransaction(existing.id);
+        await onDeleteTransaction(existing.id);
       }
     };
 
-    savePaymentType('Cobro: Efectivo', paymentValues.cash);
-    savePaymentType('Cobro: Tarjeta', paymentValues.card);
-    savePaymentType('Cobro: Transferencia', paymentValues.transfer);
+    await savePaymentType('Cobro: Efectivo', paymentValues.cash);
+    await savePaymentType('Cobro: Tarjeta', paymentValues.card);
+    await savePaymentType('Cobro: Transferencia', paymentValues.transfer);
     
     alert('Desglose de cobro guardado.');
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!expenseAmount || !expenseDesc) return;
-    onSaveTransaction({
+    await onSaveTransaction({
       id: crypto.randomUUID(),
       date,
       amount: parseFloat(expenseAmount),
@@ -346,7 +346,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
   };
 
   // Helper to handle updates for a specific hourly employee from the list
-  const handleUpdateHourlyStaff = (emp: Employee, hoursStr: string) => {
+  const handleUpdateHourlyStaff = async (emp: Employee, hoursStr: string) => {
       const hours = parseFloat(hoursStr);
       // Find existing transaction based on category and description match
       // We assume description format "Name (Xh)" for persistence
@@ -357,7 +357,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
 
       if (hours > 0) {
           const amount = hours * emp.cost;
-          onSaveTransaction({
+          await onSaveTransaction({
               id: existing ? existing.id : crypto.randomUUID(),
               date,
               amount: amount,
@@ -366,7 +366,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
               type: TransactionType.EXPENSE
           });
       } else if (existing) {
-          onDeleteTransaction(existing.id);
+          await onDeleteTransaction(existing.id);
       }
   };
 
@@ -567,7 +567,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
                   onClick={() => setIsExpenseOpen(!isExpenseOpen)}
                   className="w-full flex justify-between items-center p-4 bg-white hover:bg-slate-50 transition-colors"
                >
-                   <h4 className="font-bold text-slate-900">Gastos Directos</h4>
+                   <h4 className="font-bold text-slate-900">Gastos Directos (Caja)</h4>
                    {isExpenseOpen ? <ChevronUp size={18} className="text-slate-400"/> : <ChevronDown size={18} className="text-slate-400"/>}
                </button>
 
@@ -1013,6 +1013,7 @@ const App: React.FC = () => {
     });
 
     // Fixed list of items, no filtering of 0 values, fixed order
+    // Renamed 'Gastos de Estructura' to 'Estructura'
     const items = [
       { category: 'Estructura', amount: estructura, colorClass: 'bg-emerald-500' },
       { category: 'Proveedores', amount: proveedores, colorClass: 'bg-blue-500' },
@@ -1100,12 +1101,17 @@ const App: React.FC = () => {
     });
     const sortedUniqueDates = Array.from(cajaDates).sort((a, b) => b.localeCompare(a));
     const sessionCount = cajaDates.size;
+    
+    // Logic for "Caja View": Exclude Fixed Costs AND Suppliers to show purely "Cashbox" performance
     const variableTransactions = cleanTransactions.filter(t => {
         const isFixedCost = 
             CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category) || 
             t.category === Category.NOMINA_FIJA;
-        return !isFixedCost;
+        const isProvider = CATEGORIES_BY_SECTION.PROVEEDORES.includes(t.category as Category);
+        
+        return !isFixedCost && !isProvider;
     });
+    
     const variableSummary = calculateSummary(variableTransactions);
     const totalNet = calculateSummary(cleanTransactions).netBalance;
 
@@ -1441,7 +1447,12 @@ const App: React.FC = () => {
                                         transactions={transactions.filter(t => t.date === date)}
                                         employees={employees}
                                         onSaveTransaction={handleSaveTransaction}
-                                        onDeleteTransaction={handleDelete}
+                                        onDeleteTransaction={async (id) => {
+                                            if(window.confirm('¿Eliminar esta transacción?')) {
+                                               await deleteTransaction(id);
+                                               setTransactions(await getTransactions());
+                                            }
+                                        }}
                                         onDeleteSession={async (d) => {
                                             if(window.confirm('¿Borrar toda la sesión y sus datos asociados?')) {
                                                 const toDelete = transactions.filter(t => t.date === d);
