@@ -28,7 +28,8 @@ import {
   LayoutGrid,
   Database,
   Unplug,
-  Wrench
+  Wrench,
+  AlertTriangle
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -60,8 +61,15 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const handleSave = () => {
-    if(!url.trim()) return;
-    setManualDatabaseUrl(url.trim());
+    const trimmed = url.trim();
+    if(!trimmed) return;
+    
+    if (!trimmed.startsWith('postgres://') && !trimmed.startsWith('postgresql://')) {
+        alert('La URL de conexión debe comenzar por "postgres://" o "postgresql://"');
+        return;
+    }
+
+    setManualDatabaseUrl(trimmed);
     onClose();
   };
 
@@ -110,7 +118,7 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
                         <p className="text-xs mt-1 text-slate-600">
                             {status.isConnected 
                                 ? `Modo: ${status.type === 'MANUAL' ? 'Configuración Manual' : 'Variable de Entorno'}`
-                                : 'La aplicación no ha detectado la variable de entorno VITE_DATABASE_URL.'
+                                : 'La aplicación requiere una conexión a base de datos Neon para guardar tus datos.'
                             }
                         </p>
                     </div>
@@ -123,7 +131,7 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
                          <Wrench size={16}/> Mantenimiento
                      </h4>
                      <p className="text-xs text-slate-600 mb-3">
-                         Si la conexión es correcta pero tienes errores al guardar ("Error de operación"), es probable que las tablas no existan en la base de datos nueva.
+                         Si es la primera vez que te conectas, necesitas crear las tablas en la base de datos.
                      </p>
                      <button 
                         onClick={handleInitSchema}
@@ -138,8 +146,7 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
             <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Conexión Manual (Connection String)</label>
                 <p className="text-xs text-slate-500 mb-3">
-                    Pega aquí la URL de conexión de tu base de datos Neon (ej: <code>postgres://usuario:pass@...</code>).
-                    Esta configuración se guardará en tu navegador.
+                    Pega aquí la URL de conexión de tu proyecto Neon (ej: <code>postgres://usuario:pass@...</code>).
                 </p>
                 <input 
                     type="text" 
@@ -754,8 +761,10 @@ const App: React.FC = () => {
   });
 
   const [isDbConfigOpen, setIsDbConfigOpen] = useState(false);
+  const [dbConnectionStatus, setDbConnectionStatus] = useState(getStoredConnectionStatus());
 
   useEffect(() => {
+    setDbConnectionStatus(getStoredConnectionStatus());
     const fetchData = async () => {
       setTransactions(await getTransactions());
       setEmployees(await getEmployees());
@@ -1202,6 +1211,24 @@ const App: React.FC = () => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
+        {!dbConnectionStatus.isConnected && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-fade-in">
+                <div className="flex items-start gap-3">
+                    <AlertTriangle className="text-amber-500 flex-shrink-0" />
+                    <div>
+                        <h3 className="font-bold text-amber-900">Base de datos no conectada</h3>
+                        <p className="text-sm text-amber-800">Tus datos no se están guardando permanentemente. Para asegurar la persistencia, conecta una base de datos Neon.</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={() => setIsDbConfigOpen(true)}
+                    className="bg-amber-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-amber-700 transition-colors shadow-sm whitespace-nowrap"
+                >
+                    Conectar Ahora
+                </button>
+            </div>
+        )}
+
         {activeView === 'dashboard' && (
           <div className="space-y-8 animate-fade-in">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
