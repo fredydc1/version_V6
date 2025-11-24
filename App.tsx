@@ -446,6 +446,13 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
   const currentPaymentTotal = (parseFloat(paymentValues.cash)||0) + (parseFloat(paymentValues.card)||0) + (parseFloat(paymentValues.transfer)||0);
   const paymentDiff = sessionSummary.totalIncome - currentPaymentTotal;
 
+  // Helper for color logic
+  const getNetColor = (amount: number) => {
+      if (amount < 0) return 'text-rose-600';
+      if (amount > 1500) return 'text-emerald-600';
+      return 'text-orange-500';
+  };
+
   return (
     <div className="border-b border-slate-100 last:border-0">
       <div 
@@ -459,7 +466,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
         <div className="text-right">
              <span className="text-xs uppercase font-bold text-slate-400 mb-1 block">Resultado Sesión</span>
              <div className="flex items-center gap-3">
-                <span className={`text-xl font-black ${sessionSummary.net >= 0 ? 'text-orange-500' : 'text-rose-500'}`}>
+                <span className={`text-xl font-black ${getNetColor(sessionSummary.net)}`}>
                     {sessionSummary.net.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                 </span>
                 {isOpen ? <ChevronUp className="text-slate-400"/> : <ChevronDown className="text-slate-400"/>}
@@ -487,7 +494,7 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ session, allTransactions,
                    </div>
                    <div className="flex justify-between pt-2 border-t border-slate-100 mt-2">
                        <span className="text-base font-bold text-slate-900">Resultado Neto Sesión:</span>
-                       <span className={`text-base font-bold ${sessionSummary.net >= 0 ? 'text-orange-500' : 'text-rose-600'}`}>
+                       <span className={`text-base font-bold ${getNetColor(sessionSummary.net)}`}>
                            {sessionSummary.net.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                        </span>
                    </div>

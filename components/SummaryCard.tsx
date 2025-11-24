@@ -16,13 +16,13 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ title, amount, icon: I
         return {
           bgIcon: 'bg-emerald-100',
           textIcon: 'text-emerald-500',
-          amountColor: 'text-slate-900'
+          amountColor: 'text-emerald-600'
         };
       case 'expense':
         return {
           bgIcon: 'bg-rose-100',
           textIcon: 'text-rose-500',
-          amountColor: 'text-slate-900'
+          amountColor: 'text-rose-600'
         };
       case 'balance':
         return {
