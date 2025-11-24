@@ -246,7 +246,12 @@ const SessionEditor: React.FC<SessionEditorProps> = ({ date, description, transa
       .filter(t => t.type === TransactionType.INCOME && t.category === Category.VENTA_DIARIA)
       .reduce((acc, t) => acc + t.amount, 0);
       
-    const directExpenses = transactions.filter(t => t.type === TransactionType.EXPENSE && t.category !== Category.PERSONAL_HORAS).reduce((acc, t) => acc + t.amount, 0);
+    // Solo contar GASTO_CAJA como gastos directos de la sesión.
+    // Excluir Estructura y Proveedores aunque coincidan en fecha.
+    const directExpenses = transactions
+      .filter(t => t.type === TransactionType.EXPENSE && t.category === Category.GASTO_CAJA)
+      .reduce((acc, t) => acc + t.amount, 0);
+      
     const staffCost = transactions.filter(t => t.category === Category.PERSONAL_HORAS).reduce((acc, t) => acc + t.amount, 0);
     
     return {
