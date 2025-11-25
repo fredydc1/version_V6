@@ -1674,11 +1674,10 @@ const App: React.FC = () => {
                             <BadgeDollarSign className="text-emerald-600" size={32} />
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo Configurado</p>
+                            <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo</p>
                             <h3 className="text-3xl font-black text-orange-500">
                                 {personalStats.monthlyFixedCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                             </h3>
-                            <p className="text-xs text-emerald-600 font-bold mt-1">Se incluye automáticamente en Dashboard</p>
                         </div>
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
@@ -1812,7 +1811,7 @@ const App: React.FC = () => {
                              ) : (
                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      {employees.filter(e => e.type === employeeViewTab).map(emp => {
-                                         // Calculate total cost for this employee in current month (Variable/Hourly part)
+                                         // Calculate total cost for this employee in current month
                                          const empMonthVariableCost = dashboardData
                                              .filter(t => t.description.includes(emp.name) && t.category === Category.PERSONAL_HORAS)
                                              .reduce((acc, t) => acc + t.amount, 0);
@@ -2233,6 +2232,38 @@ const App: React.FC = () => {
                             <div className="p-3 bg-rose-50 rounded-full">
                                 <Building2 className="text-rose-500" size={32} />
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Ranking Accordion */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <PieChartIcon size={18} className="text-slate-400"/>
+                                Gasto por Concepto
+                            </h3>
+                        </div>
+                        <div className="p-6">
+                            {expensesByConcept.length === 0 ? (
+                                <p className="text-slate-400 text-sm text-center italic">No hay gastos para mostrar.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {expensesByConcept.slice(0, 5).map((item, idx) => (
+                                        <div key={idx} className="flex items-center gap-4">
+                                            <span className="text-slate-400 font-bold w-4 text-center">{idx + 1}</span>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between text-sm mb-1">
+                                                    <span className="font-bold text-slate-700">{item.name}</span>
+                                                    <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 rounded-full h-2">
+                                                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(item.amount / viewSummary.totalExpense) * 100}%` }}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 

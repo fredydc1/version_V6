@@ -14,21 +14,22 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ title, amount, icon: I
     switch (variant) {
       case 'income':
         return {
-          bgIcon: 'bg-green-100',
-          textIcon: 'text-green-500',
-          amountColor: 'text-green-600'
+          bgIcon: 'bg-emerald-100',
+          textIcon: 'text-emerald-500',
+          amountColor: 'text-emerald-600'
         };
       case 'expense':
         return {
-          bgIcon: 'bg-red-100',
-          textIcon: 'text-red-500',
-          amountColor: 'text-red-600'
+          bgIcon: 'bg-rose-100',
+          textIcon: 'text-rose-500',
+          amountColor: 'text-rose-600'
         };
       case 'balance':
+        const isPositive = amount >= 0;
         return {
-          bgIcon: 'bg-green-100', // Usando verde claro para balance positivo visual
-          textIcon: 'text-green-600',
-          amountColor: 'text-green-600'
+          bgIcon: isPositive ? 'bg-emerald-100' : 'bg-rose-100',
+          textIcon: isPositive ? 'text-emerald-600' : 'text-rose-600',
+          amountColor: isPositive ? 'text-emerald-600' : 'text-rose-600'
         };
       default:
         return { bgIcon: 'bg-slate-100', textIcon: 'text-slate-500', amountColor: 'text-slate-900' };
