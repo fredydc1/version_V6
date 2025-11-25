@@ -802,6 +802,7 @@ const App: React.FC = () => {
   const [employeeViewTab, setEmployeeViewTab] = useState<'FIXED' | 'HOURLY'>('FIXED');
 
   const [supplierViewMode, setSupplierViewMode] = useState<'SUMMARY' | 'MANAGE' | 'ADD_EXPENSE'>('SUMMARY');
+  const [isSupplierHistoryOpen, setIsSupplierHistoryOpen] = useState(false); // COLLAPSED BY DEFAULT
   const [newSupplierName, setNewSupplierName] = useState('');
   const [supplierExpenseForm, setSupplierExpenseForm] = useState<{
       supplierName: string;
@@ -1987,37 +1988,45 @@ const App: React.FC = () => {
                 
                  {/* History List */}
                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                     <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                     <button 
+                        onClick={() => setIsSupplierHistoryOpen(!isSupplierHistoryOpen)}
+                        className="w-full p-6 border-b border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-colors"
+                     >
                         <h3 className="font-bold text-slate-900">Historial de Gastos</h3>
-                     </div>
-                     <div className="divide-y divide-slate-100">
-                        {currentList.length === 0 ? (
-                             <div className="p-10 text-center">
-                                 <Truck className="mx-auto text-slate-300 mb-2" size={48} />
-                                 <p className="text-slate-500 font-medium">No hay gastos de proveedores</p>
-                                 <p className="text-slate-400 text-sm">Añade un nuevo gasto para empezar a llevar el control.</p>
-                             </div>
-                        ) : (
-                             currentList.slice(0, 10).map(t => (
-                                 <div key={t.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-center">
-                                      <div>
-                                          <p className="font-bold text-slate-800">{t.supplier || 'Sin Proveedor'}</p>
-                                          <p className="text-xs text-slate-500 flex items-center gap-2">
-                                              <span>{format(parseISO(t.date), 'dd MMM yyyy', { locale: es })}</span>
-                                              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                                              <span>{t.description}</span>
-                                          </p>
-                                      </div>
-                                      <div className="flex items-center gap-3">
-                                          <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
-                                          <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-rose-500 p-1">
-                                              <Trash2 size={16} />
-                                          </button>
-                                      </div>
+                        {isSupplierHistoryOpen ? <ChevronUp className="text-slate-400"/> : <ChevronDown className="text-slate-400"/>}
+                     </button>
+                     
+                     {isSupplierHistoryOpen && (
+                         <div className="divide-y divide-slate-100">
+                            {currentList.length === 0 ? (
+                                 <div className="p-10 text-center">
+                                     <Truck className="mx-auto text-slate-300 mb-2" size={48} />
+                                     <p className="text-slate-500 font-medium">No hay gastos de proveedores</p>
+                                     <p className="text-slate-400 text-sm">Añade un nuevo gasto para empezar a llevar el control.</p>
                                  </div>
-                             ))
-                        )}
-                     </div>
+                            ) : (
+                                 // REMOVED .slice(0,10) to show ALL history
+                                 currentList.map(t => (
+                                     <div key={t.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-center">
+                                          <div>
+                                              <p className="font-bold text-slate-800">{t.supplier || 'Sin Proveedor'}</p>
+                                              <p className="text-xs text-slate-500 flex items-center gap-2">
+                                                  <span>{format(parseISO(t.date), 'dd MMM yyyy', { locale: es })}</span>
+                                                  <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                                  <span>{t.description}</span>
+                                              </p>
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                              <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
+                                              <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-rose-500 p-1">
+                                                  <Trash2 size={16} />
+                                              </button>
+                                          </div>
+                                     </div>
+                                 ))
+                            )}
+                         </div>
+                     )}
                  </div>
               </>
             )}
