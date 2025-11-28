@@ -1,3 +1,4 @@
+
 import { neon } from '@neondatabase/serverless';
 import { Transaction, TransactionType, Employee, Supplier, FixedExpenseItem, Category } from '../types';
 
@@ -114,9 +115,19 @@ export const initializeSchema = async () => {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         default_category TEXT NOT NULL,
-        default_amount DECIMAL
+        default_amount DECIMAL,
+        is_recurring BOOLEAN DEFAULT FALSE
       );
     `;
+
+    // MIGRACIÓN MANUAL: Intentar añadir columna is_recurring si la tabla ya existía sin ella
+    try {
+        // @ts-ignore
+        await sql`ALTER TABLE fixed_expenses ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE`;
+    } catch (e) {
+        // Ignorar error si ya existe o si la DB no soporta IF NOT EXISTS en alter (Postgres antiguos, aunque Neon es moderno)
+        console.log("Columna is_recurring ya existe o error en alter:", e);
+    }
 
     return true;
   } catch (error) {
@@ -140,7 +151,8 @@ const mapEmployee = (row: any): Employee => ({
 const mapFixedExpense = (row: any): FixedExpenseItem => ({
   ...row,
   defaultCategory: row.default_category, 
-  defaultAmount: row.default_amount ? parseFloat(row.default_amount) : undefined
+  defaultAmount: row.default_amount ? parseFloat(row.default_amount) : undefined,
+  isRecurring: row.is_recurring
 });
 
 // Helper para validar conexión antes de operaciones de escritura
@@ -331,12 +343,13 @@ export const saveFixedExpense = async (item: FixedExpenseItem): Promise<FixedExp
   try {
     // @ts-ignore
     await sql`
-      INSERT INTO fixed_expenses (id, name, default_category, default_amount)
-      VALUES (${item.id}, ${item.name}, ${item.defaultCategory}, ${item.defaultAmount || null})
+      INSERT INTO fixed_expenses (id, name, default_category, default_amount, is_recurring)
+      VALUES (${item.id}, ${item.name}, ${item.defaultCategory}, ${item.defaultAmount || null}, ${item.isRecurring || false})
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         default_category = EXCLUDED.default_category,
-        default_amount = EXCLUDED.default_amount
+        default_amount = EXCLUDED.default_amount,
+        is_recurring = EXCLUDED.is_recurring
     `;
     return getFixedExpenses();
   } catch (error) {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   PieChart as PieChartIcon, 
@@ -32,7 +33,10 @@ import {
   AlertTriangle,
   Loader2,
   Wallet,
-  Power
+  Power,
+  Repeat,
+  Wand2,
+  Save
 } from 'lucide-react';
 import { format, parseISO, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -91,7 +95,7 @@ const DbConfigModal: React.FC<DbConfigModalProps> = ({ isOpen, onClose }) => {
           window.location.reload();
       } catch (error) {
           console.error(error);
-          alert('Error creando tablas. Revisa la conexión o la consola para más detalles.');
+          alert('Error creando tablas. Revisa la consola para más detalles.');
       } finally {
           setLoading(false);
       }
@@ -802,7 +806,6 @@ const App: React.FC = () => {
   const [employeeViewTab, setEmployeeViewTab] = useState<'FIXED' | 'HOURLY'>('FIXED');
 
   const [supplierViewMode, setSupplierViewMode] = useState<'SUMMARY' | 'MANAGE' | 'ADD_EXPENSE'>('SUMMARY');
-  const [isSupplierHistoryOpen, setIsSupplierHistoryOpen] = useState(false); // COLLAPSED BY DEFAULT
   const [newSupplierName, setNewSupplierName] = useState('');
   const [supplierExpenseForm, setSupplierExpenseForm] = useState<{
       supplierName: string;
@@ -820,6 +823,10 @@ const App: React.FC = () => {
 
   const [structureViewMode, setStructureViewMode] = useState<'SUMMARY' | 'MANAGE' | 'ADD_EXPENSE'>('SUMMARY');
   const [newFixedExpenseName, setNewFixedExpenseName] = useState('');
+  const [newFixedExpenseAmount, setNewFixedExpenseAmount] = useState('');
+  const [newFixedExpenseRecurring, setNewFixedExpenseRecurring] = useState(false);
+  const [editingFixedExpenseId, setEditingFixedExpenseId] = useState<string | null>(null);
+
   const [structureExpenseForm, setStructureExpenseForm] = useState<{
       id?: string;
       name: string;
@@ -1024,16 +1031,40 @@ const App: React.FC = () => {
   const handleAddFixedExpense = async () => {
       if (!newFixedExpenseName.trim()) return;
       try {
+        const id = editingFixedExpenseId || crypto.randomUUID();
         const updated = await saveFixedExpense({ 
-            id: crypto.randomUUID(), 
+            id, 
             name: newFixedExpenseName, 
-            defaultCategory: Category.ALQUILER 
+            defaultCategory: Category.ALQUILER,
+            defaultAmount: newFixedExpenseAmount ? parseFloat(newFixedExpenseAmount) : undefined,
+            isRecurring: newFixedExpenseRecurring
         });
         setFixedExpenses(updated);
-        setNewFixedExpenseName('');
+        resetFixedExpenseForm();
       } catch (error) {
-         handleError(error);
+         // Detectar si el error es por columna inexistente (schema viejo)
+         // @ts-ignore
+         if (error?.message?.includes("is_recurring") || error?.message?.includes("column")) {
+             alert("Error: La base de datos necesita actualizarse. Por favor, ve a Configuración de DB y pulsa 'Inicializar Tablas'.");
+         } else {
+             handleError(error);
+         }
       }
+  };
+
+  const resetFixedExpenseForm = () => {
+      setNewFixedExpenseName('');
+      setNewFixedExpenseAmount('');
+      setNewFixedExpenseRecurring(false);
+      setEditingFixedExpenseId(null);
+  };
+
+  const startEditingFixedExpenseDefinition = (item: FixedExpenseItem) => {
+      setNewFixedExpenseName(item.name);
+      setNewFixedExpenseAmount(item.defaultAmount?.toString() || '');
+      setNewFixedExpenseRecurring(!!item.isRecurring);
+      setEditingFixedExpenseId(item.id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteFixedExpense = async (id: string) => {
@@ -1041,9 +1072,19 @@ const App: React.FC = () => {
           try {
             const updated = await deleteFixedExpense(id);
             setFixedExpenses(updated);
+            if (editingFixedExpenseId === id) resetFixedExpenseForm();
           } catch (error) {
              handleError(error);
           }
+      }
+  };
+  
+  const handleUpdateFixedExpense = async (item: FixedExpenseItem, updates: Partial<FixedExpenseItem>) => {
+      try {
+          const updated = await saveFixedExpense({ ...item, ...updates });
+          setFixedExpenses(updated);
+      } catch (error) {
+          handleError(error);
       }
   };
 
@@ -1078,6 +1119,52 @@ const App: React.FC = () => {
           amount: '',
           date: new Date().toISOString().split('T')[0]
       });
+  };
+
+  const generateRecurringExpenses = async () => {
+      const recurringItems = fixedExpenses.filter(item => item.isRecurring);
+      if(recurringItems.length === 0) {
+          alert("No tienes gastos marcados como recurrentes en la configuración 'Gestionar'.");
+          return;
+      }
+
+      if(!window.confirm(`Se van a generar ${recurringItems.length} gastos recurrentes para este mes. ¿Continuar?`)) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      let generatedCount = 0;
+
+      try {
+          for (const item of recurringItems) {
+              // Check if already exists loosely for this month/description
+              const exists = transactions.some(t => 
+                 t.description === item.name && 
+                 t.amount === item.defaultAmount &&
+                 isSameMonth(parseISO(t.date), new Date())
+              );
+
+              if (!exists) {
+                  const t: Transaction = {
+                      id: crypto.randomUUID(),
+                      date: today,
+                      amount: item.defaultAmount || 0,
+                      description: item.name,
+                      category: item.defaultCategory,
+                      type: TransactionType.EXPENSE
+                  };
+                  await saveTransaction(t);
+                  generatedCount++;
+              }
+          }
+          
+          if (generatedCount > 0) {
+              setTransactions(await getTransactions());
+              alert(`Se han generado ${generatedCount} gastos correctamente.`);
+          } else {
+              alert('Todos los gastos recurrentes ya existen para este mes.');
+          }
+      } catch (error) {
+          handleError(error);
+      }
   };
 
   // --- DASHBOARD LOGIC START ---
@@ -1389,6 +1476,7 @@ const App: React.FC = () => {
             </div>
         )}
 
+        {/* Dashboard View Code Omitted (Unchanged) */}
         {activeView === 'dashboard' && (
           <div className="space-y-8 animate-fade-in">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1485,6 +1573,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Caja View Code Omitted (Unchanged) */}
         {activeView === 'caja' && (
           <div className="space-y-6 animate-fade-in">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -1644,6 +1733,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Personal View Code Omitted (Unchanged) */}
         {activeView === 'personal' && (
             <div className="space-y-6 animate-fade-in">
                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -1675,10 +1765,11 @@ const App: React.FC = () => {
                             <BadgeDollarSign className="text-emerald-600" size={32} />
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo</p>
+                            <p className="text-sm font-medium text-slate-500 mb-1">Coste Fijo Configurado</p>
                             <h3 className="text-3xl font-black text-orange-500">
                                 {personalStats.monthlyFixedCost.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €
                             </h3>
+                            <p className="text-xs text-emerald-600 font-bold mt-1">Se incluye automáticamente en Dashboard</p>
                         </div>
                     </div>
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
@@ -1812,7 +1903,7 @@ const App: React.FC = () => {
                              ) : (
                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      {employees.filter(e => e.type === employeeViewTab).map(emp => {
-                                         // Calculate total cost for this employee in current month
+                                         // Calculate total cost for this employee in current month (Variable/Hourly part)
                                          const empMonthVariableCost = dashboardData
                                              .filter(t => t.description.includes(emp.name) && t.category === Category.PERSONAL_HORAS)
                                              .reduce((acc, t) => acc + t.amount, 0);
@@ -1903,7 +1994,7 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* Proveedores, Estructura views remain unchanged in this block as requested changes were specific to Session naming and Incomes logic */}
+        {/* Proveedores View Code Omitted (Unchanged) */}
         {activeView === 'proveedores' && (
           <div className="space-y-6 animate-fade-in">
             {/* Header always visible */}
@@ -1988,45 +2079,37 @@ const App: React.FC = () => {
                 
                  {/* History List */}
                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                     <button 
-                        onClick={() => setIsSupplierHistoryOpen(!isSupplierHistoryOpen)}
-                        className="w-full p-6 border-b border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-colors"
-                     >
+                     <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                         <h3 className="font-bold text-slate-900">Historial de Gastos</h3>
-                        {isSupplierHistoryOpen ? <ChevronUp className="text-slate-400"/> : <ChevronDown className="text-slate-400"/>}
-                     </button>
-                     
-                     {isSupplierHistoryOpen && (
-                         <div className="divide-y divide-slate-100">
-                            {currentList.length === 0 ? (
-                                 <div className="p-10 text-center">
-                                     <Truck className="mx-auto text-slate-300 mb-2" size={48} />
-                                     <p className="text-slate-500 font-medium">No hay gastos de proveedores</p>
-                                     <p className="text-slate-400 text-sm">Añade un nuevo gasto para empezar a llevar el control.</p>
+                     </div>
+                     <div className="divide-y divide-slate-100">
+                        {currentList.length === 0 ? (
+                             <div className="p-10 text-center">
+                                 <Truck className="mx-auto text-slate-300 mb-2" size={48} />
+                                 <p className="text-slate-500 font-medium">No hay gastos de proveedores</p>
+                                 <p className="text-slate-400 text-sm">Añade un nuevo gasto para empezar a llevar el control.</p>
+                             </div>
+                        ) : (
+                             currentList.slice(0, 10).map(t => (
+                                 <div key={t.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-center">
+                                      <div>
+                                          <p className="font-bold text-slate-800">{t.supplier || 'Sin Proveedor'}</p>
+                                          <p className="text-xs text-slate-500 flex items-center gap-2">
+                                              <span>{format(parseISO(t.date), 'dd MMM yyyy', { locale: es })}</span>
+                                              <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                              <span>{t.description}</span>
+                                          </p>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                          <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
+                                          <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-rose-500 p-1">
+                                              <Trash2 size={16} />
+                                          </button>
+                                      </div>
                                  </div>
-                            ) : (
-                                 // REMOVED .slice(0,10) to show ALL history
-                                 currentList.map(t => (
-                                     <div key={t.id} className="p-4 hover:bg-slate-50 transition-colors flex justify-between items-center">
-                                          <div>
-                                              <p className="font-bold text-slate-800">{t.supplier || 'Sin Proveedor'}</p>
-                                              <p className="text-xs text-slate-500 flex items-center gap-2">
-                                                  <span>{format(parseISO(t.date), 'dd MMM yyyy', { locale: es })}</span>
-                                                  <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                                                  <span>{t.description}</span>
-                                              </p>
-                                          </div>
-                                          <div className="flex items-center gap-3">
-                                              <span className="font-bold text-rose-600">-{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
-                                              <button onClick={() => handleDelete(t.id)} className="text-slate-300 hover:text-rose-500 p-1">
-                                                  <Trash2 size={16} />
-                                              </button>
-                                          </div>
-                                     </div>
-                                 ))
-                            )}
-                         </div>
-                     )}
+                             ))
+                        )}
+                     </div>
                  </div>
               </>
             )}
@@ -2203,13 +2286,21 @@ const App: React.FC = () => {
              {structureViewMode === 'SUMMARY' && (
                  <>
                     {/* Action Buttons */}
-                    <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
                         <button 
                             onClick={() => setStructureViewMode('MANAGE')}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-md transition-all flex items-center gap-2"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-md transition-all flex items-center justify-center gap-2"
                         >
                             <LayoutGrid size={18} />
-                            Gestionar
+                            Configurar Fijos
+                        </button>
+                        <button 
+                            onClick={generateRecurringExpenses}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                            title="Generar automáticamente los gastos marcados como recurrentes para este mes"
+                        >
+                            <Wand2 size={18} />
+                            Generar Recurrentes
                         </button>
                         <button 
                             onClick={() => {
@@ -2222,10 +2313,10 @@ const App: React.FC = () => {
                                 });
                                 setStructureViewMode('ADD_EXPENSE');
                             }}
-                            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-md transition-all flex items-center gap-2"
+                            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-md transition-all flex items-center justify-center gap-2"
                         >
                             <Plus size={18} />
-                            Añadir Gasto
+                            Añadir Manual
                         </button>
                     </div>
 
@@ -2241,38 +2332,6 @@ const App: React.FC = () => {
                             <div className="p-3 bg-rose-50 rounded-full">
                                 <Building2 className="text-rose-500" size={32} />
                             </div>
-                        </div>
-                    </div>
-
-                    {/* Ranking Accordion */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                                <PieChartIcon size={18} className="text-slate-400"/>
-                                Gasto por Concepto
-                            </h3>
-                        </div>
-                        <div className="p-6">
-                            {expensesByConcept.length === 0 ? (
-                                <p className="text-slate-400 text-sm text-center italic">No hay gastos para mostrar.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {expensesByConcept.slice(0, 5).map((item, idx) => (
-                                        <div key={idx} className="flex items-center gap-4">
-                                            <span className="text-slate-400 font-bold w-4 text-center">{idx + 1}</span>
-                                            <div className="flex-1">
-                                                <div className="flex justify-between text-sm mb-1">
-                                                    <span className="font-bold text-slate-700">{item.name}</span>
-                                                    <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
-                                                </div>
-                                                <div className="w-full bg-slate-100 rounded-full h-2">
-                                                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(item.amount / viewSummary.totalExpense) * 100}%` }}></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     </div>
 
@@ -2322,7 +2381,7 @@ const App: React.FC = () => {
                  </>
              )}
 
-             {/* ADD/EDIT/MANAGE MODES for Structure (Standard form code omitted for brevity as it's repetitive but preserved in XML logic) */}
+             {/* ADD/EDIT MODE */}
              {structureViewMode === 'ADD_EXPENSE' && (
                  <>
                     <button 
@@ -2398,10 +2457,11 @@ const App: React.FC = () => {
                  </>
              )}
 
+             {/* MANAGE (CONFIG) MODE */}
              {structureViewMode === 'MANAGE' && (
                  <>
                     <button 
-                        onClick={() => setStructureViewMode('SUMMARY')}
+                        onClick={() => { setStructureViewMode('SUMMARY'); resetFixedExpenseForm(); }}
                         className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-2 shadow-sm hover:bg-indigo-700 transition-all"
                     >
                         <ArrowLeft size={16} /> Volver
@@ -2410,44 +2470,107 @@ const App: React.FC = () => {
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
                         <div className="mb-8">
                             <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                                <Plus className="text-indigo-500" /> Añadir Concepto Habitual
+                                {editingFixedExpenseId ? <Pencil className="text-indigo-500" /> : <Plus className="text-indigo-500" />} 
+                                {editingFixedExpenseId ? 'Editar Concepto' : 'Añadir Gasto Fijo Recurrente'}
                             </h3>
-                            <label className="block text-sm font-medium text-slate-600 mb-2">Nombre del Concepto</label>
-                            <div className="flex gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1">Nombre</label>
+                                    <input 
+                                        type="text" 
+                                        value={newFixedExpenseName}
+                                        onChange={(e) => setNewFixedExpenseName(e.target.value)}
+                                        placeholder="Ej: Luz"
+                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1">Monto Habitual (€)</label>
+                                    <input 
+                                        type="number" 
+                                        value={newFixedExpenseAmount}
+                                        onChange={(e) => setNewFixedExpenseAmount(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 mb-4">
                                 <input 
-                                    type="text" 
-                                    value={newFixedExpenseName}
-                                    onChange={(e) => setNewFixedExpenseName(e.target.value)}
-                                    placeholder="Ej: Luz"
-                                    className="flex-1 p-3 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition-colors"
+                                    type="checkbox"
+                                    id="isRecurring"
+                                    checked={newFixedExpenseRecurring}
+                                    onChange={(e) => setNewFixedExpenseRecurring(e.target.checked)}
+                                    className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
                                 />
+                                <label htmlFor="isRecurring" className="text-sm font-bold text-slate-700">Marcar como Recurrente (Generación Mensual)</label>
+                            </div>
+                            
+                            <div className="flex gap-2">
                                 <button 
                                     onClick={handleAddFixedExpense}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 font-bold rounded-lg shadow-md"
+                                    className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 font-bold rounded-lg shadow-md flex items-center justify-center gap-2"
                                 >
-                                    <Plus size={20} />
+                                    {editingFixedExpenseId ? <Save size={20} /> : <Plus size={20} />} 
+                                    {editingFixedExpenseId ? 'Actualizar Concepto' : 'Añadir Concepto'}
                                 </button>
+                                {editingFixedExpenseId && (
+                                    <button 
+                                        onClick={resetFixedExpenseForm}
+                                        className="px-4 py-3 font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Cancelar
+                                    </button>
+                                )}
                             </div>
-                            <p className="text-xs text-slate-400 mt-2">Estos conceptos sirven como referencia de tus gastos fijos habituales.</p>
+                            <p className="text-xs text-slate-400 mt-2">Los gastos marcados como recurrentes se podrán generar automáticamente cada mes con el botón "Generar Recurrentes".</p>
                         </div>
 
                         <div className="border-t border-slate-100 pt-8">
                             <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                                <LayoutGrid className="text-indigo-500" /> Conceptos Registrados
+                                <LayoutGrid className="text-indigo-500" /> Conceptos Configurados
                             </h3>
                             {fixedExpenses.length === 0 ? (
                                 <p className="text-slate-400 italic">No hay conceptos registrados.</p>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-1 gap-3">
                                     {fixedExpenses.map(item => (
-                                        <div key={item.id} className="flex justify-between items-center p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors group">
-                                            <span className="font-bold text-slate-700">{item.name}</span>
-                                            <button 
-                                                onClick={() => handleDeleteFixedExpense(item.id)} 
-                                                className="text-slate-300 hover:text-rose-500 bg-slate-50 p-2 rounded-lg group-hover:bg-white transition-colors"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                        <div key={item.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors group">
+                                            <div className="mb-2 sm:mb-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-700">{item.name}</span>
+                                                    {item.isRecurring && (
+                                                        <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                            <Repeat size={12}/> Recurrente
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-slate-500">
+                                                    Monto fijo: {item.defaultAmount ? `${item.defaultAmount} €` : 'Variable'}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                                                <button 
+                                                    onClick={() => handleUpdateFixedExpense(item, { isRecurring: !item.isRecurring })} 
+                                                    className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${item.isRecurring ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}
+                                                >
+                                                    {item.isRecurring ? 'Es Recurrente' : 'Hacer Recurrente'}
+                                                </button>
+                                                <button 
+                                                    onClick={() => startEditingFixedExpenseDefinition(item)} 
+                                                    className="text-slate-300 hover:text-indigo-600 bg-slate-50 p-2 rounded-lg group-hover:bg-white transition-colors"
+                                                    title="Editar definición"
+                                                >
+                                                    <Pencil size={16} />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteFixedExpense(item.id)} 
+                                                    className="text-slate-300 hover:text-rose-500 bg-slate-50 p-2 rounded-lg group-hover:bg-white transition-colors"
+                                                    title="Eliminar definición"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

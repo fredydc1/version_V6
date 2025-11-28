@@ -86,4 +86,5 @@ export interface FixedExpenseItem {
   name: string; // Ej: Alquiler, Iberdrola, Movistar
   defaultCategory: Category | string;
   defaultAmount?: number; // Opcional, para autocompletar
+  isRecurring?: boolean; // Si es true, se sugiere generarlo cada mes
 }
