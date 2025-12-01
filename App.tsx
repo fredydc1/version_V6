@@ -38,7 +38,7 @@ import {
   Wand2,
   Save
 } from 'lucide-react';
-import { format, parseISO, isSameMonth } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { Transaction, TransactionType, Category, Employee, Supplier, FixedExpenseItem } from './types';
@@ -1139,7 +1139,7 @@ const App: React.FC = () => {
               const exists = transactions.some(t => 
                  t.description === item.name && 
                  t.amount === item.defaultAmount &&
-                 isSameMonth(parseISO(t.date), new Date())
+                 t.date.startsWith(dashboardMonth)
               );
 
               if (!exists) {
@@ -1174,8 +1174,8 @@ const App: React.FC = () => {
   }, [transactions]);
   
   const dashboardData = useMemo(() => {
-    const selectedDate = parseISO(dashboardMonth + '-01'); 
-    return validTransactions.filter(t => isSameMonth(parseISO(t.date), selectedDate));
+    // Robust string comparison to avoid Timezone issues
+    return validTransactions.filter(t => t.date.startsWith(dashboardMonth));
   }, [validTransactions, dashboardMonth]);
 
   // 1. Calculate the theoretical fixed cost from ACTIVE employees configuration
@@ -1280,7 +1280,7 @@ const App: React.FC = () => {
   const annualSummary = useMemo(() => calculateSummary(annualData), [annualData]);
 
   const getFilteredTransactions = () => {
-    const selectedDate = parseISO(dashboardMonth + '-01');
+    // Robust string comparison for filters too
     switch (activeView) {
       case 'caja':
         return transactions.filter(t => 
@@ -1293,12 +1293,12 @@ const App: React.FC = () => {
       case 'proveedores':
         return validTransactions.filter(t => 
             CATEGORIES_BY_SECTION.PROVEEDORES.includes(t.category as Category) &&
-            isSameMonth(parseISO(t.date), selectedDate)
+            t.date.startsWith(dashboardMonth)
         );
       case 'estructura':
         return validTransactions.filter(t => 
             CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category) &&
-            isSameMonth(parseISO(t.date), selectedDate)
+            t.date.startsWith(dashboardMonth)
         );
       case 'anual':
         return annualData;
