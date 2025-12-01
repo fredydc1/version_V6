@@ -1280,6 +1280,7 @@ const App: React.FC = () => {
   const annualSummary = useMemo(() => calculateSummary(annualData), [annualData]);
 
   const getFilteredTransactions = () => {
+    const selectedDate = parseISO(dashboardMonth + '-01');
     switch (activeView) {
       case 'caja':
         return transactions.filter(t => 
@@ -1290,9 +1291,15 @@ const App: React.FC = () => {
       case 'personal':
         return validTransactions.filter(t => CATEGORIES_BY_SECTION.PERSONAL.includes(t.category as Category));
       case 'proveedores':
-        return validTransactions.filter(t => CATEGORIES_BY_SECTION.PROVEEDORES.includes(t.category as Category));
+        return validTransactions.filter(t => 
+            CATEGORIES_BY_SECTION.PROVEEDORES.includes(t.category as Category) &&
+            isSameMonth(parseISO(t.date), selectedDate)
+        );
       case 'estructura':
-        return validTransactions.filter(t => CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category));
+        return validTransactions.filter(t => 
+            CATEGORIES_BY_SECTION.ESTRUCTURA.includes(t.category as Category) &&
+            isSameMonth(parseISO(t.date), selectedDate)
+        );
       case 'anual':
         return annualData;
       default:
@@ -1998,17 +2005,29 @@ const App: React.FC = () => {
         {activeView === 'proveedores' && (
           <div className="space-y-6 animate-fade-in">
             {/* Header always visible */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <h2 className="text-2xl font-black text-slate-900">Gestión de Proveedores</h2>
-               {supplierViewMode === 'SUMMARY' && (
-                <button 
-                  onClick={exportToCSV}
-                  className="hidden md:flex bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg font-bold shadow-sm transition-all items-center gap-2"
-                >
-                  <Download size={18} />
-                  Exportar
-                </button>
-               )}
+              <div className="flex items-center gap-3">
+                   {/* DATE SELECTOR */}
+                   <div className="bg-white border border-slate-300 rounded-lg flex items-center px-4 py-2 shadow-sm hover:border-slate-400 transition-colors">
+                        <Calendar className="text-slate-400 mr-2" size={18} />
+                        <input 
+                            type="month" 
+                            value={dashboardMonth}
+                            onChange={(e) => setDashboardMonth(e.target.value)}
+                            className="bg-transparent border-none focus:ring-0 text-slate-700 font-medium text-sm outline-none"
+                        />
+                    </div>
+                   {supplierViewMode === 'SUMMARY' && (
+                    <button 
+                      onClick={exportToCSV}
+                      className="hidden md:flex bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg font-bold shadow-sm transition-all items-center gap-2"
+                    >
+                      <Download size={18} />
+                      Exportar
+                    </button>
+                   )}
+              </div>
             </div>
 
             {/* VIEWS */}
@@ -2269,17 +2288,29 @@ const App: React.FC = () => {
 
         {activeView === 'estructura' && (
           <div className="space-y-6 animate-fade-in">
-             <div className="flex justify-between items-center">
+             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                <h2 className="text-2xl font-black text-slate-900">Gastos de Estructura</h2>
-               {structureViewMode === 'SUMMARY' && (
-                <button 
-                    onClick={exportToCSV}
-                    className="hidden md:flex bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg font-bold shadow-sm transition-all items-center gap-2"
-                >
-                    <Download size={18} />
-                    Exportar
-                </button>
-               )}
+               <div className="flex items-center gap-3">
+                   {/* DATE SELECTOR */}
+                   <div className="bg-white border border-slate-300 rounded-lg flex items-center px-4 py-2 shadow-sm hover:border-slate-400 transition-colors">
+                        <Calendar className="text-slate-400 mr-2" size={18} />
+                        <input 
+                            type="month" 
+                            value={dashboardMonth}
+                            onChange={(e) => setDashboardMonth(e.target.value)}
+                            className="bg-transparent border-none focus:ring-0 text-slate-700 font-medium text-sm outline-none"
+                        />
+                    </div>
+                   {structureViewMode === 'SUMMARY' && (
+                    <button 
+                        onClick={exportToCSV}
+                        className="hidden md:flex bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-lg font-bold shadow-sm transition-all items-center gap-2"
+                    >
+                        <Download size={18} />
+                        Exportar
+                    </button>
+                   )}
+               </div>
              </div>
 
              {/* VIEWS */}
@@ -2292,7 +2323,7 @@ const App: React.FC = () => {
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold shadow-md transition-all flex items-center justify-center gap-2"
                         >
                             <LayoutGrid size={18} />
-                            Configurar Fijos
+                            Gestionar
                         </button>
                         <button 
                             onClick={generateRecurringExpenses}
@@ -2332,6 +2363,38 @@ const App: React.FC = () => {
                             <div className="p-3 bg-rose-50 rounded-full">
                                 <Building2 className="text-rose-500" size={32} />
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Ranking Accordion */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <PieChartIcon size={18} className="text-slate-400"/>
+                                Gasto por Concepto
+                            </h3>
+                        </div>
+                        <div className="p-6">
+                            {expensesByConcept.length === 0 ? (
+                                <p className="text-slate-400 text-sm text-center italic">No hay gastos para mostrar.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {expensesByConcept.slice(0, 5).map((item, idx) => (
+                                        <div key={idx} className="flex items-center gap-4">
+                                            <span className="text-slate-400 font-bold w-4 text-center">{idx + 1}</span>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between text-sm mb-1">
+                                                    <span className="font-bold text-slate-700">{item.name}</span>
+                                                    <span className="font-bold text-slate-900">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} €</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 rounded-full h-2">
+                                                    <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${(item.amount / viewSummary.totalExpense) * 100}%` }}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
