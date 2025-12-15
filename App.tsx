@@ -1342,10 +1342,13 @@ const App: React.FC = () => {
   }, [currentList, activeView]);
 
   const cajaMetrics = useMemo(() => {
-    const cleanTransactions = transactions.filter(t => t.category !== Category.DESGLOSE_PAGO);
+    // 1. FILTER BY MONTH FIRST
+    const monthTransactions = transactions.filter(t => t.date.startsWith(dashboardMonth));
+    
+    const cleanTransactions = monthTransactions.filter(t => t.category !== Category.DESGLOSE_PAGO);
     // Identify Session Headers (Transactions created by "Add Session")
     // Logic: Venta Diaria + Income + Description NOT in Static List
-    const sessionHeaders = transactions.filter(t => 
+    const sessionHeaders = monthTransactions.filter(t => 
         t.category === Category.VENTA_DIARIA && 
         t.type === TransactionType.INCOME && 
         !STATIC_INCOME_SOURCES.includes(t.description)
@@ -1372,7 +1375,7 @@ const App: React.FC = () => {
         totalNet,
         sessionHeaders
     };
-  }, [transactions]);
+  }, [transactions, dashboardMonth]);
 
   // Personal View Calculations
   const personalStats = useMemo(() => {
@@ -1585,13 +1588,25 @@ const App: React.FC = () => {
           <div className="space-y-6 animate-fade-in">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-2xl font-black text-slate-900">Caja y Sesiones de Trabajo</h2>
-                <button 
-                  onClick={exportToCSV}
-                  className="bg-slate-500 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2"
-                >
-                  <Download size={18} />
-                  Exportar a CSV
-                </button>
+                <div className="flex items-center gap-3">
+                   {/* DATE SELECTOR */}
+                   <div className="bg-white border border-slate-300 rounded-lg flex items-center px-4 py-2 shadow-sm hover:border-slate-400 transition-colors">
+                        <Calendar className="text-slate-400 mr-2" size={18} />
+                        <input 
+                            type="month" 
+                            value={dashboardMonth}
+                            onChange={(e) => setDashboardMonth(e.target.value)}
+                            className="bg-transparent border-none focus:ring-0 text-slate-700 font-medium text-sm outline-none"
+                        />
+                    </div>
+                    <button 
+                      onClick={exportToCSV}
+                      className="bg-slate-500 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm transition-all flex items-center gap-2"
+                    >
+                      <Download size={18} />
+                      <span className="hidden md:inline">Exportar CSV</span>
+                    </button>
+                </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1681,8 +1696,8 @@ const App: React.FC = () => {
                                 <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
                                     <FileText className="text-slate-300" size={32} />
                                 </div>
-                                <h4 className="text-slate-900 font-bold mb-1">No hay sesiones</h4>
-                                <p className="text-slate-500 text-sm">Añade una nueva sesión para empezar a llevar el control de caja.</p>
+                                <h4 className="text-slate-900 font-bold mb-1">No hay sesiones en este mes</h4>
+                                <p className="text-slate-500 text-sm">Añade una nueva sesión o cambia la fecha en el calendario superior.</p>
                             </div>
                         ) : (
                             cajaMetrics.sessionHeaders.map(session => (
